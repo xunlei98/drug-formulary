@@ -1,3 +1,4 @@
+:root { color-scheme: light; }
 @font-face { font-family: "DM Sans"; font-weight: 400; font-display: swap; src: url(/fonts/dm-sans-latin-400-normal.woff2) format("woff2"); }
 @font-face { font-family: "DM Sans"; font-weight: 700; font-display: swap; src: url(/fonts/dm-sans-latin-700-normal.woff2) format("woff2"); }
 @font-face { font-family: "JetBrains Mono"; font-weight: 500; font-display: swap; src: url(/fonts/jetbrains-mono-latin-500-normal.woff2) format("woff2"); }
@@ -152,14 +153,6 @@ thead th { border-top: 0; }
 .scroll-x { overflow-x: auto; }
 .sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-@media (prefers-color-scheme: dark) {
-  :root { --white: #0d1b2e; --ink: #e6edf6; --navy: #cfe0f5; --navy-2: #e6f0fc; --grey: #9fb0c5; --line: #243a57; --soft: #14263d; --blue: #7db7f5; --green: #5fd49b; --green-bg: #0f3523; --amber: #f2c14e; --amber-bg: #3b2e0a; --orange: #ff9d66; --orange-bg: #402010; --red: #ff8a80; --red-bg: #431a17; --shadow: none; }
-  .card-head { background: #1b3556; color: #fff; }
-  .btn, .tab.primary .dot, .chip[aria-pressed="true"], .seg button[aria-pressed="true"], .pill.navy { color: #0d1b2e; }
-  .badge.offline, .badge.attention { color: #0d1b2e; }
-  .toast { color: #0d1b2e; }
-  .overlay { background: rgba(13, 27, 46, .97); }
-}
 
 .row-between { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .user-row { display: grid; gap: 8px; padding: 16px; border-top: 1px solid var(--line); }
@@ -204,4 +197,3 @@ table.kad .meta { font-size: 12px; color: var(--grey); }
 .kad-form fieldset { margin: 0 0 14px; padding: 0; border: 0; }
 .kad-form legend { padding: 0; margin-bottom: 6px; }
 @media (max-width: 420px) { .kad-form .grid2 { grid-template-columns: 1fr; } .kad-loc { grid-column: 1 / -1; } }
-@media (prefers-color-scheme: dark) { table.kad thead th, table.kad thead .sticky { background: #2a1f2b; } }
