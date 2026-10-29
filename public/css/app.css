@@ -100,8 +100,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid rgba(11, 92, 173,
 .search { position: relative; }
 .search input { padding-left: 44px; border-radius: 24px; background: var(--soft); }
 .search .icon { position: absolute; left: 14px; top: 13px; color: var(--grey); }
-.seg { display: flex; gap: 4px; padding: 4px; border-radius: 24px; background: var(--soft); border: 1px solid var(--line); overflow-x: auto; }
-.seg button { flex: 1; min-height: 44px; padding: 0 12px; border: 0; border-radius: 20px; background: none; font-weight: 700; font-size: 14px; color: var(--grey); cursor: pointer; white-space: nowrap; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 28px; background: var(--soft); border: 1px solid var(--line); }
+.seg button { flex: 1 1 auto; min-height: 48px; padding: 0 12px; border: 0; border-radius: 20px; background: none; font-weight: 700; font-size: 14px; color: var(--grey); cursor: pointer; white-space: nowrap; }
 .seg button[aria-pressed="true"] { background: var(--navy); color: var(--white); }
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper input { text-align: center; font-size: 28px; font-weight: 700; font-family: var(--mono); }
@@ -160,3 +160,8 @@ thead th { border-top: 0; }
   .toast { color: #0d1b2e; }
   .overlay { background: rgba(13, 27, 46, .97); }
 }
+
+.row-between { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.user-row { display: grid; gap: 8px; padding: 16px; border-top: 1px solid var(--line); }
+.user-row:first-child { border-top: 0; }
+.user-row .chips { padding: 0; overflow: visible; }

@@ -38,7 +38,7 @@ async function loadMain() {
 }
 
 export async function loadPatients() {
-  state.patients = await patientDb.all('patients');
+  state.patients = can_('patient.view') ? await patientDb.all('patients') : [];
 }
 
 export async function loadLocal() {

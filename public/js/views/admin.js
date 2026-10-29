@@ -37,15 +37,15 @@ async function users(host) {
         } catch (e) { fail(e); }
       } }, icon('plus'), 'Create account')),
     revealed,
-    h('section', { class: 'card scroll-x' }, h('table', null,
-      h('thead', null, h('tr', null, ['User', 'Role', 'Ward', 'Last sign-in', ''].map((t) => h('th', null, t)))),
-      h('tbody', null, rows.map((u) => h('tr', null,
-        h('td', null, h('b', null, u.username), h('div', { class: 'sub' }, u.display_name), u.disabled ? h('span', { class: 'pill s-none' }, 'Disabled') : null),
-        h('td', null, u.role), h('td', null, state.locMap.get(u.location_id)?.name || '-'), h('td', null, u.last_login ? fmt.dateTime(u.last_login) : 'Never'),
-        h('td', null, h('div', { class: 'sheet-actions' },
-          h('button', { class: 'btn ghost', type: 'button', onClick: async () => { try { showTemp('Password reset for', u.username, (await post(`/api/users/${u.id}/reset-password`)).tempPassword); } catch (e) { fail(e); } } }, 'Reset password'),
-          h('button', { class: 'btn ghost', type: 'button', onClick: async () => { try { await patch(`/api/users/${u.id}`, { disabled: u.disabled ? 0 : 1 }); users(host); } catch (e) { fail(e); } } }, u.disabled ? 'Enable' : 'Disable'),
-          h('button', { class: 'btn danger', type: 'button', onClick: async () => { if (confirm(`Delete ${u.username}?`)) { try { await del(`/api/users/${u.id}`); users(host); } catch (e) { fail(e); } } } }, 'Delete')))))))));
+    h('section', { class: 'card' }, rows.map((u) => h('div', { class: 'user-row' },
+      h('div', { class: 'row-between' },
+        h('div', null, h('b', null, u.username), h('div', { class: 'sub' }, u.display_name)),
+        h('div', { class: 'chips' }, h('span', { class: 'pill s-none' }, u.role), u.disabled ? h('span', { class: 'pill s-over' }, 'Disabled') : null)),
+      h('div', { class: 'sub' }, `${state.locMap.get(u.location_id)?.name || 'No ward'} · Last sign-in ${u.last_login ? fmt.dateTime(u.last_login) : 'never'}`),
+      h('div', { class: 'sheet-actions' },
+        h('button', { class: 'btn ghost', type: 'button', onClick: async () => { try { showTemp('Password reset for', u.username, (await post(`/api/users/${u.id}/reset-password`)).tempPassword); } catch (e) { fail(e); } } }, 'Reset password'),
+        h('button', { class: 'btn ghost', type: 'button', onClick: async () => { try { await patch(`/api/users/${u.id}`, { disabled: u.disabled ? 0 : 1 }); users(host); } catch (e) { fail(e); } } }, u.disabled ? 'Enable' : 'Disable'),
+        h('button', { class: 'btn danger', type: 'button', onClick: async () => { if (confirm(`Delete ${u.username}?`)) { try { await del(`/api/users/${u.id}`); users(host); } catch (e) { fail(e); } } } }, 'Delete'))))));
 }
 
 async function locations(host) {
