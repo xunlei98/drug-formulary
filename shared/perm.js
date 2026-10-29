@@ -2,7 +2,7 @@ export const ROLES = ['admin', 'pharmacist', 'ward'];
 
 const PHARMACIST = [
   'drug.view', 'drug.edit', 'stock.view', 'stock.log', 'quota.view', 'quota.edit',
-  'patient.view', 'patient.edit', 'patient.fullic',
+  'patient.view', 'patient.edit', 'patient.fullic', 'stock.review',
 ];
 
 const TABLE = {
