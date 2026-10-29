@@ -22,3 +22,10 @@ Start with `README.md`, then `docs/deploy.md`, `docs/security.md`, `docs/domain.
 - Patient data stays DEMO only until hosting is approved.
 - Firestore rules are the only security layer; every permission change needs a rules test (`npm run test:rules`).
 - Never commit service-account keys or sheet CSVs (see `.gitignore`).
+
+## Design rules (from Design)
+- White theme only. Prescriber pills: A* purple, A pink, B green, C amber, D blue. Procurement pills: Local Purchase red, Contract green, APPL blue. Soft colours, dark text.
+- Kad Stok header stays pink `#fdf2f6`.
+- Drug photos shown whole on grey; grey picture icon when missing or broken.
+- Drug page: labels left, values right; on a phone each value sits under its label.
+- Tap targets at least 44px. Never put the text `file://` in the code.
