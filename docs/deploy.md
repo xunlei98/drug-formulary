@@ -32,7 +32,7 @@ npm run seed
 npm start
 ```
 
-`seed` imports `data/master.csv`, `data/item-mahal.csv` and `data/kuota.csv` if present. It adds EXAMPLE locations and creates the first admin. It prints a temporary password once. Change it at first sign-in. To choose the admin name and password, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` first.
+`seed` imports `data/master.csv`, `data/item-mahal.csv` and `data/kuota.csv` if present. It adds the Hospital Limbang stores and wards and creates the first admin. It prints a temporary password once. Change it at first sign-in. To choose the admin name and password, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` first.
 
 Run it as a service so it restarts after a reboot (systemd or pm2). Run it as a normal user, never as root.
 
@@ -89,6 +89,16 @@ DB_PATH=data/demo.db npm start
 ```
 
 This adds fake DEMO patients and users admin, demo.pharm and demo.ward. Never use the demo database for real work.
+
+## Floor stock par levels
+
+Floor stock PDFs need `pdftotext` (Debian/Ubuntu: `apt install poppler-utils`). Put one PDF per unit, named for the unit (for example `Male Ward.pdf`), in a folder and run:
+
+```
+node src/cli.js import-floorstock /path/to/pdfs docs/floorstock-unmatched.md
+```
+
+Each import replaces that unit's par levels and never changes stock balances. One unit at a time: Admin > Import > Floor stock list, or `node src/cli.js import floorstock "Male Ward.pdf" --location male-ward --dry-run`. Keep the PDFs outside the repository folder.
 
 ## Importing real patients (later, by an admin, after approval)
 

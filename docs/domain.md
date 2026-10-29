@@ -26,7 +26,13 @@ A typed tree. `type` is `store`, `ward` or `shelf`. A `shelf` must have a parent
 
 Shelf or rack text is a `shelf` node named for the rack, for example "Rack B2", under a store. This lets balances answer "which rack".
 
-The seeded locations are placeholders. The admin edits them.
+Seeded locations (Hospital Limbang): stores Main Store, Prepacking, Substore OPD, Substore IPD; wards and units ETD, Female Ward, HDU, ICU, Klinik Mata, Klinik Pakar, Klinik Psikiatrik, Male Ward, Maternity Ward, OPD MO Room, OT, Paeds Ward, Treatment Room, Unit Endoscopy, Unit Radiology. Re-seeding adds missing ones, deletes unused old EXAMPLE locations and disables used ones.
+
+## Par level
+
+The approved floor-stock maximum of a drug at a ward or unit, from that unit's 2026 "Senarai Floor Stock" PDF (lists: floor stock, DDA, after office hours, emergency trolley, recovery). `par_levels` keeps every parsed row with its match to the formulary (`exact`, `high`, `low`, `none`) and score. Unmatched rows (`drug` null) are never shown. Par for a drug at a location is the sum across its lists.
+
+Status: no balance row is "Not counted", balance below par is "Low", otherwise "OK". Par never creates a balance; balances come only from logged movements and stock counts.
 
 ## Stock ledger
 
@@ -68,7 +74,7 @@ Ward scoping:
 
 Counting rule: Active and Active - Pesara count against the quota. Waiting List is shown apart. Off and Defaulted count for nothing.
 
-Status by used / quota: `ok` below 80 percent, `near` from 80 percent up to but not including 100, `full` at exactly 100, `over` above 100 (shown as Over +N). Slots left never go below 0. The 80 percent line is a default (`QUOTA_NEAR_PCT`) for Alvin to confirm. A quota of 0 with no patients is `full`. No `mahal_item` row means the drug is not Ubat Mahal.
+Status by used / quota: `ok` below 80 percent, `near` from 80 percent up to but not including 100, `full` at exactly 100, `over` above 100 (shown as Over +N). Slots left never go below 0. Kuota is the number of patients allowed per drug per unit. The 80 percent line was confirmed by Alvin (`QUOTA_NEAR_PCT`). A quota of 0 with no patients is `full`. No `mahal_item` row means the drug is not Ubat Mahal.
 
 ## Patient (Pesakit)
 

@@ -1,8 +1,9 @@
-function open(name, stores) {
+function open(name, stores, version) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(name, 1);
+    const req = indexedDB.open(name, version);
     req.onupgradeneeded = () => {
-      for (const [s, opts] of Object.entries(stores)) req.result.createObjectStore(s, opts);
+      const have = req.result.objectStoreNames;
+      for (const [s, opts] of Object.entries(stores)) if (!have.contains(s)) req.result.createObjectStore(s, opts);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -12,9 +13,9 @@ function open(name, stores) {
 const done = (tx) => new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
 const result = (req) => new Promise((resolve, reject) => { req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
 
-export function createDb(name, stores) {
+export function createDb(name, stores, version = 1) {
   let dbp = null;
-  const db = () => (dbp ||= open(name, stores));
+  const db = () => (dbp ||= open(name, stores, version));
   return {
     async all(store) {
       return result((await db()).transaction(store).objectStore(store).getAll());
@@ -56,6 +57,7 @@ export function createDb(name, stores) {
 export const mainDb = createDb('fm-main', {
   drugs: { keyPath: 'no_kod' }, mahal: { keyPath: 'no_kod' }, locations: { keyPath: 'id' }, balances: { keyPath: 'key' },
   movements: { keyPath: 'id' }, outbox: { keyPath: 'n', autoIncrement: true }, rejected: { keyPath: 'id' }, meta: {},
-});
+  par: { autoIncrement: true },
+}, 2);
 
 export const patientDb = createDb('fm-patients', { patients: { keyPath: 'id' } });

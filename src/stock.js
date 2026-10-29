@@ -63,18 +63,35 @@ export function openDiscrepancies(db) {
     WHERE x.resolved_at IS NULL ORDER BY x.id`).all();
 }
 
-export function seedExampleLocations(db) {
-  if (db.prepare('SELECT COUNT(*) n FROM locations').get().n) return 0;
-  const rows = [
-    ['main-store', 'EXAMPLE Main Store', 'store', null, 1],
-    ['main-store-rack-a', 'EXAMPLE Rack A', 'shelf', 'main-store', 2],
-    ['main-store-fridge', 'EXAMPLE Cold Room Fridge', 'shelf', 'main-store', 3],
-    ['opd-pharmacy', 'EXAMPLE Outpatient Pharmacy', 'store', null, 4],
-    ['ward-medical', 'EXAMPLE Medical Ward', 'ward', null, 5],
-    ['ward-psych', 'EXAMPLE Psychiatry Ward', 'ward', null, 6],
-    ['ward-onc', 'EXAMPLE Oncology Day Care', 'ward', null, 7],
-  ];
-  const ins = db.prepare('INSERT INTO locations (id, name, type, parent_id, sort) VALUES (?,?,?,?,?)');
-  for (const [id, name, type, parent, sort] of rows) ins.run(id, name, type, parent, sort);
-  return rows.length;
+export const STORES = [
+  ['main-store', 'Main Store'], ['prepacking', 'Prepacking'], ['substore-opd', 'Substore OPD'], ['substore-ipd', 'Substore IPD'],
+];
+export const WARDS = [
+  ['etd', 'ETD'], ['female-ward', 'Female Ward'], ['hdu', 'HDU'], ['icu', 'ICU'], ['klinik-mata', 'Klinik Mata'],
+  ['klinik-pakar', 'Klinik Pakar'], ['klinik-psikiatrik', 'Klinik Psikiatrik'], ['male-ward', 'Male Ward'],
+  ['maternity-ward', 'Maternity Ward'], ['opd-mo-room', 'OPD MO Room'], ['ot', 'OT'], ['paeds-ward', 'Paeds Ward'],
+  ['treatment-room', 'Treatment Room'], ['unit-endoscopy', 'Unit Endoscopy'], ['unit-radiology', 'Unit Radiology'],
+];
+const OLD_EXAMPLES = ['main-store-rack-a', 'main-store-fridge', 'opd-pharmacy', 'ward-medical', 'ward-psych', 'ward-onc'];
+
+// Idempotent: adds the Hospital Limbang stores and wards, and retires the v1 EXAMPLE rows.
+// An example row with any movement, balance or user is disabled, never deleted.
+export function seedLocations(db) {
+  return db.transaction(() => {
+    const used = (id) => db.prepare(`SELECT 1 FROM movements WHERE from_location = @id OR to_location = @id
+      UNION SELECT 1 FROM balances WHERE location = @id UNION SELECT 1 FROM users WHERE location_id = @id
+      UNION SELECT 1 FROM locations WHERE parent_id = @id`).get({ id });
+    let removed = 0;
+    for (const id of OLD_EXAMPLES) {
+      if (!db.prepare('SELECT 1 FROM locations WHERE id = ?').get(id)) continue;
+      if (used(id)) db.prepare('UPDATE locations SET disabled = 1 WHERE id = ?').run(id);
+      else { db.prepare('DELETE FROM locations WHERE id = ?').run(id); removed++; }
+    }
+    const up = db.prepare(`INSERT INTO locations (id, name, type, parent_id, sort) VALUES (?,?,?,NULL,?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name WHERE locations.name LIKE 'EXAMPLE %'`);
+    const before = db.prepare('SELECT COUNT(*) n FROM locations').get().n;
+    STORES.forEach(([id, name], i) => up.run(id, name, 'store', i + 1));
+    WARDS.forEach(([id, name], i) => up.run(id, name, 'ward', 10 + i));
+    return { added: db.prepare('SELECT COUNT(*) n FROM locations').get().n - before, removed };
+  })();
 }

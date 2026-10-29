@@ -28,11 +28,14 @@ export function addDemoData(db) {
   const mov = (o) => recordMovement(db, { id: crypto.randomUUID(), device_time: new Date().toISOString(), note: 'demo', ...o }, ROLE_USER, 'replay');
   for (const d of [...drugs, ...mahal.map((m) => m.no_kod).slice(0, 2)]) {
     mov({ drug: d, type: 'receive', to: 'main-store', qty: 600 });
-    mov({ drug: d, type: 'transfer', from: 'main-store', to: 'ward-medical', qty: 120 });
-    mov({ drug: d, type: 'transfer', from: 'main-store', to: 'opd-pharmacy', qty: 80 });
-    mov({ drug: d, type: 'issue', from: 'ward-medical', qty: 35 });
-    mov({ drug: d, type: 'issue', from: 'ward-medical', qty: 20 });
+    mov({ drug: d, type: 'transfer', from: 'main-store', to: 'substore-ipd', qty: 120 });
+    mov({ drug: d, type: 'transfer', from: 'main-store', to: 'substore-opd', qty: 80 });
+    mov({ drug: d, type: 'issue', from: 'substore-ipd', qty: 35 });
     mov({ drug: d, type: 'receive', to: 'main-store', qty: 240 });
   }
+  // A demo stock count at Male Ward so the par screens show both states. Real databases never get this.
+  const par = db.prepare(`SELECT drug, SUM(max_qty) AS par FROM par_levels WHERE location = 'male-ward' AND drug IS NOT NULL AND max_qty > 0
+    GROUP BY drug ORDER BY MIN(id) LIMIT 8`).all();
+  par.forEach((p, i) => mov({ drug: p.drug, type: 'stocktake', to: 'male-ward', qty: i % 3 === 1 ? Math.floor(p.par / 2) : p.par }));
   return `Added ${n} fake DEMO patients and example stock movements.`;
 }

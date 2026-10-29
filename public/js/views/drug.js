@@ -1,10 +1,11 @@
 import { h, icon, clear, fmt } from '../dom.js';
-import { state, can_, stockFor, totalFor, movementsFor, quotaSummary, unitSummaries, undoneIds, logMovement, enqueue } from '../store.js';
+import { state, can_, parLines, totalFor, movementsFor, quotaSummary, unitSummaries, undoneIds, logMovement, enqueue } from '../store.js';
 import { put } from '../api.js';
 import { stat, statusPill, quotaBar, tape, locName, moveLine, toast } from '../ui.js';
 import { inverseOf } from '/shared/ledger.js';
 import { uuid } from '../dom.js';
 import { refresh } from '../store.js';
+import { parPill, parMeta } from './stock.js';
 
 const FIELDS = [
   ['Kategori', 'kategori'], ['Kod PhIS', 'kod_phis', 'mono'], ['No Kod', 'no_kod', 'mono'], ['Brand', 'brand'], ['Jenis Perolehan Stok', 'jenis'], ['Kumpulan', 'kumpulan'],
@@ -20,7 +21,8 @@ export function drug({ id }) {
   const paint = () => {
     const total = totalFor(kod);
     const q = quotaSummary(kod);
-    const stock = stockFor(kod);
+    const stock = parLines({ drug: kod }).map((r) => ({ ...r, name: state.locMap.get(r.location)?.name || r.location }))
+      .sort((a, b) => (b.status === 'low') - (a.status === 'low') || a.name.localeCompare(b.name));
     const moves = movementsFor(kod, 30);
     const undone = undoneIds();
     const belowMin = d.min != null && total < d.min;
@@ -46,11 +48,15 @@ export function drug({ id }) {
       h('div', { class: 'scroll-x' }, h('table', null, h('thead', null, h('tr', null, ['Unit', 'Used', 'Kuota', 'Status'].map((t) => h('th', null, t)))),
         h('tbody', null, units.map((u) => h('tr', null, h('td', null, u.unit), h('td', { class: 'mono' }, u.used), h('td', { class: 'mono' }, u.quota ?? '-'), h('td', null, statusPill(u)))))))) : null;
 
-    const stockCard = h('section', { class: 'card' }, h('p', { class: 'label card-pad' }, 'Stock by location'),
-      h('ul', { class: 'list' }, stock.length ? stock.map((s) => h('li', { class: 'item' }, h('div', { class: 'grow name' }, s.name), h('span', { class: 'qty mono' }, fmt.n(s.qty)))) : h('li', { class: 'empty' }, 'No stock recorded.')));
+    const stockCard = h('section', { class: 'card' }, h('p', { class: 'label card-pad' }, 'Stock vs par by location'),
+      h('ul', { class: 'list' }, stock.length ? stock.map((s) => h('li', { class: 'item' },
+        h('div', { class: 'grow' }, h('div', { class: 'name' }, s.name), h('div', { class: 'meta' }, s.par ? `Par ${fmt.n(s.par)} · ${parMeta(s)}` : 'No par level')),
+        h('div', { class: 'par' }, h('span', { class: 'qty mono' }, s.qty === undefined ? '–' : fmt.n(s.qty)), s.par ? h('span', { class: 'meta mono' }, `/ ${fmt.n(s.par)}`) : null),
+        parPill(s.status)))
+        : h('li', { class: 'empty' }, 'No stock recorded and no par level.')));
 
     const moveCard = h('section', { class: 'card' },
-      h('div', { class: 'card-pad stack' }, h('p', { class: 'label' }, 'Recent movements'), moves.length ? tape(moves) : null),
+      h('div', { class: 'card-pad stack' }, h('p', { class: 'label' }, 'Recent movements'), moves.length > 1 ? tape(moves) : null),
       h('ul', { class: 'list' }, moves.length ? moves.slice(0, 12).map((m) => {
         const l = moveLine(m);
         const canUndo = !m.pending && !m.reverses && !undone.has(m.id) && can_('stock.log') && m.type !== 'stocktake' && m.type !== 'adjust';

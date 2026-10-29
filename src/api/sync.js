@@ -75,7 +75,10 @@ export function syncRoutes({ db, config }) {
       const locations = allLocations(db);
       const scope = viewScope(u, locations, config.wardStockScope);
       const inScope = (l) => !scope || scope.has(l);
-      const balances = db.prepare('SELECT drug, location, qty FROM balances WHERE qty <> 0').all().filter((b) => inScope(b.location));
+      // Zero rows are kept: a counted zero is "low", a missing row is "not counted".
+      const balances = db.prepare('SELECT drug, location, qty FROM balances').all().filter((b) => inScope(b.location));
+      const par = db.prepare(`SELECT drug, location, list, max_qty, sku_unit, note FROM par_levels
+        WHERE drug IS NOT NULL AND max_qty IS NOT NULL ORDER BY location, list, id`).all().filter((p) => inScope(p.location));
       const movements = db.prepare(`SELECT id, drug, from_location AS "from", to_location AS "to", qty, type, username, server_time, note, reverses
         FROM movements ORDER BY seq DESC LIMIT 2000`).all().filter((m) => inScope(m.from) || inScope(m.to)).slice(0, 1500);
       const mahal = db.prepare('SELECT no_kod, quota, nota, tarikh_kemaskini FROM mahal_item').all();
@@ -86,7 +89,7 @@ export function syncRoutes({ db, config }) {
         drugs: db.prepare('SELECT * FROM drugs ORDER BY perihal').all(),
         mahal: mahal.map((m) => ({ ...m, units: units.filter((x) => x.no_kod === m.no_kod).map(({ unit, kuantiti }) => ({ unit, kuantiti })) })),
         counts: db.prepare('SELECT no_kod, unit, kategori, COUNT(*) AS n FROM patients GROUP BY no_kod, unit, kategori').all(),
-        locations, balances, movements,
+        locations, balances, movements, par,
       };
       if (can(u.role, 'patient.view') && config.offlinePatients === 'minimal') {
         snap.patients = db.prepare('SELECT * FROM patients').all().map(minimalPatient);

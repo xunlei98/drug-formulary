@@ -2,6 +2,7 @@ import { HttpError } from '../http.js';
 import { audit } from '../db.js';
 import { createUser, tempPassword, hashPassword, dropUserSessions } from '../auth.js';
 import { IMPORTERS } from '../import/index.js';
+import { pdfToText } from '../import/floorstock.js';
 import { ROLES } from '../../shared/perm.js';
 
 const USERNAME = /^[a-z0-9._-]{3,30}$/i;
@@ -68,7 +69,8 @@ export function adminRoutes({ db }) {
       const fn = IMPORTERS[ctx.params.kind];
       if (!fn) throw new HttpError(404, 'Unknown import');
       try {
-        return fn(db, String(ctx.body.text || ''), { user: ctx.user, dryRun: !!ctx.body.dryRun });
+        const text = ctx.body.pdf ? pdfToText(Buffer.from(String(ctx.body.pdf), 'base64')) : String(ctx.body.text || '');
+        return fn(db, text, { user: ctx.user, dryRun: !!ctx.body.dryRun, location: ctx.body.location });
       } catch (e) {
         throw new HttpError(400, e.message);
       }

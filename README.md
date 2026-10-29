@@ -54,7 +54,7 @@ There is no self sign-up. An admin creates each account.
 - **Patients** (admin and pharmacist): patients on each Ubat Mahal drug. The IC is hidden until you tap it. Every tap is recorded.
 - **Admin**: Users, Locations, Import and Audit.
 
-Locations are examples at first. Rename them in Admin > Locations.
+The Hospital Limbang stores and wards are preset. Floor stock par levels come from each unit's PDF: Admin > Import > Floor stock list (see docs/deploy.md).
 
 ## Updating the drug list
 

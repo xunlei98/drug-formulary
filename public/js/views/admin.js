@@ -1,5 +1,5 @@
 import { h, icon, clear, fmt } from '../dom.js';
-import { state, refresh } from '../store.js';
+import { state, refresh, locationOptions } from '../store.js';
 import { get, post, patch, del } from '../api.js';
 import { chips, toast } from '../ui.js';
 import { ROLES } from '/shared/perm.js';
@@ -56,7 +56,7 @@ async function locations(host) {
   type.value = 'shelf';
   const parent = h('select', null, h('option', { value: '' }, 'No parent'), rows.filter((l) => l.type !== 'shelf').map((l) => h('option', { value: l.id }, l.name)));
   clear(host,
-    h('div', { class: 'notice warn' }, 'Seeded locations are EXAMPLES. Rename or disable them to match the real stores, wards and racks.'),
+    h('div', { class: 'notice' }, 'Hospital Limbang stores and wards are preset. Add shelves or fridges under a store if you count stock there.'),
     h('section', { class: 'card card-pad' }, h('p', { class: 'label' }, 'Add location'), field('Name', name), field('Type', type), field('Under', parent),
       h('button', { class: 'btn', type: 'button', onClick: async () => { try { await post('/api/locations', { name: name.value, type: type.value, parent_id: parent.value || null }); await refresh(); locations(host); } catch (e) { fail(e); } } }, 'Add')),
     h('section', { class: 'card' }, h('ul', { class: 'list' }, rows.map((l) => {
@@ -68,23 +68,50 @@ async function locations(host) {
 }
 
 async function importTab(host) {
-  const KINDS = [['master', 'Formulary (MASTER)'], ['item-mahal', 'Item Mahal'], ['kuota-unit', 'Kuota by unit'], ['patients', 'Pesakit (patients)']];
+  const KINDS = [['master', 'Formulary (MASTER)'], ['item-mahal', 'Item Mahal'], ['kuota-unit', 'Kuota by unit'], ['patients', 'Pesakit (patients)'], ['floorstock', 'Floor stock list']];
   let kind = 'master';
+  let pdf = null;
   const area = h('textarea', { rows: 8, placeholder: 'Paste rows copied from Google Sheets (with the header row), or choose a CSV file below.', 'aria-label': 'Data to import' });
-  const file = h('input', { type: 'file', accept: '.csv,.tsv,.txt', 'aria-label': 'CSV file' });
+  const file = h('input', { type: 'file', accept: '.csv,.tsv,.txt', 'aria-label': 'File to import' });
+  const loc = h('select', { 'aria-label': 'Ward or unit' }, locationOptions().filter((l) => l.type !== 'shelf').map((l) => h('option', { value: l.id }, l.label)));
+  const locField = field('Ward or unit this list belongs to', loc);
   const out = h('div');
-  file.addEventListener('change', async () => { if (file.files[0]) area.value = await file.files[0].text(); });
+  const setKind = (v) => {
+    kind = v; pdf = null; file.value = ''; clear(out);
+    const fs = kind === 'floorstock';
+    locField.classList.toggle('hidden', !fs);
+    file.accept = fs ? '.pdf,.txt' : '.csv,.tsv,.txt';
+    area.placeholder = fs ? 'Choose the unit\'s "Senarai Floor Stock" PDF below, or paste its text.' : 'Paste rows copied from Google Sheets (with the header row), or choose a CSV file below.';
+  };
+  file.addEventListener('change', async () => {
+    const f = file.files[0];
+    if (!f) return;
+    if (/\.pdf$/i.test(f.name)) {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      pdf = btoa(bin);
+      area.value = `PDF selected: ${f.name}`;
+    } else { pdf = null; area.value = await f.text(); }
+  });
   const run = async (dryRun) => {
     try {
-      const r = await post(`/api/import/${kind}`, { text: area.value, dryRun });
-      clear(out, h('div', { class: `notice ${r.errors.length ? 'warn' : 'good'}` }, h('b', null, r.dryRun ? 'Dry run, nothing saved. ' : 'Imported. '), `${r.added} new, ${r.updated} updated, ${r.skipped} skipped.`,
-        r.errors.slice(0, 15).map((e) => h('div', null, `Line ${e.line}: ${e.message}`))));
-      if (!dryRun) { area.value = ''; await refresh(); }
+      const body = kind === 'floorstock' ? { location: loc.value, dryRun, ...(pdf ? { pdf } : { text: area.value }) } : { text: area.value, dryRun };
+      const r = await post(`/api/import/${kind}`, body);
+      const summary = kind === 'floorstock'
+        ? `${r.parsed} rows read, ${r.matched} matched to the formulary, ${r.unmatched.length} unmatched. Replaces ${r.updated} earlier rows for this unit.`
+        : `${r.added} new, ${r.updated} updated, ${r.skipped} skipped.`;
+      clear(out, h('div', { class: `notice ${r.errors.length || r.unmatched?.length ? 'warn' : 'good'}` }, h('b', null, r.dryRun ? 'Dry run, nothing saved. ' : 'Imported. '), summary,
+        r.errors.slice(0, 15).map((e) => h('div', null, `Line ${e.line}: ${e.message}`)),
+        (r.unmatched || []).slice(0, 30).map((x) => h('div', null, `Unmatched: ${x.name} (${x.max ?? '-'} ${x.unit})`)),
+        (r.review || []).filter((x) => x.match === 'low').slice(0, 30).map((x) => h('div', null, `Check: ${x.name} → ${state.drugMap.get(x.drug)?.perihal || x.drug} (${x.score})`))));
+      if (!dryRun) { area.value = ''; pdf = null; file.value = ''; await refresh(); }
     } catch (e) { clear(out, h('div', { class: 'notice bad' }, e.message)); }
   };
+  setKind(kind);
   clear(host,
-    h('div', { class: 'notice' }, 'Import in this order: MASTER, Item Mahal, Kuota by unit, then Pesakit. Re-importing the same rows updates them and never duplicates. Always do a dry run first. Patient rows are real personal data: only import on an approved server.'),
-    h('section', { class: 'card card-pad stack' }, chips(KINDS, kind, (v) => { kind = v; clear(out); }), area, file, h('div', { class: 'sheet-actions' },
+    h('div', { class: 'notice' }, 'Import in this order: MASTER, Item Mahal, Kuota by unit, then Pesakit. Re-importing the same rows updates them and never duplicates. Always do a dry run first. Patient rows are real personal data: only import on an approved server. A floor stock list replaces that unit\'s par levels; stock balances are not changed.'),
+    h('section', { class: 'card card-pad stack' }, chips(KINDS, kind, setKind), locField, area, file, h('div', { class: 'sheet-actions' },
       h('button', { class: 'btn ghost', type: 'button', onClick: () => run(true) }, 'Dry run'), h('button', { class: 'btn', type: 'button', onClick: () => run(false) }, 'Import'))), out);
 }
 

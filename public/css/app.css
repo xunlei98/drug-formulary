@@ -18,7 +18,7 @@ a:hover { text-decoration: underline; }
 :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
 .icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .mono { font-family: var(--mono); font-weight: 500; }
-.hidden { display: none !important; }
+.hidden, [hidden] { display: none !important; }
 
 .shell { min-height: 100vh; min-height: 100dvh; padding-bottom: calc(var(--tab) + env(safe-area-inset-bottom)); }
 .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px; background: var(--white); border-bottom: 1px solid var(--line); }
@@ -115,7 +115,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid rgba(11, 92, 173,
 .bar.s-none::after { background: var(--line); }
 
 .tape { display: flex; align-items: flex-end; gap: 3px; height: 56px; }
-.tape i { flex: 1; min-width: 3px; height: var(--h, 10%); border-radius: 2px 2px 0 0; background: var(--navy); }
+.tape i { flex: 1; min-width: 3px; max-width: 14px; height: var(--h, 10%); border-radius: 2px 2px 0 0; background: var(--navy); }
 .tape i.out { background: #9db3cf; }
 
 .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
@@ -165,3 +165,4 @@ thead th { border-top: 0; }
 .user-row { display: grid; gap: 8px; padding: 16px; border-top: 1px solid var(--line); }
 .user-row:first-child { border-top: 0; }
 .user-row .chips { padding: 0; overflow: visible; }
+.item .par { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }

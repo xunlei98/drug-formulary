@@ -4,12 +4,13 @@ import { applyMovement, keyOf } from '/shared/ledger.js';
 import { summarize, byUnit } from '/shared/quota.js';
 import { indexDrug, search as fuzzy } from '/shared/search.js';
 import { can, subtree } from '/shared/perm.js';
+import { groupPar, parStatus } from '/shared/par.js';
 import { uuid } from './dom.js';
 
 export const state = {
   user: null, config: { offlineDays: 3, offlinePatients: 'minimal', idleLockMin: 5, nearPct: 80 },
   drugs: [], drugMap: new Map(), index: [], mahal: new Map(), locations: [], locMap: new Map(),
-  base: new Map(), movements: [], counts: [], patients: [], outbox: [], rejected: [],
+  base: new Map(), par: new Map(), movements: [], counts: [], patients: [], outbox: [], rejected: [],
   syncedAt: null, lastOnlineAt: null, syncing: false, online: navigator.onLine,
 };
 
@@ -20,8 +21,8 @@ export const notify = () => { for (const fn of listeners) fn(); };
 export const can_ = (perm) => !!state.user && can(state.user.role, perm);
 
 async function loadMain() {
-  const [drugs, mahal, locations, balances, movements, outbox, rejected, meta] = await Promise.all(
-    ['drugs', 'mahal', 'locations', 'balances', 'movements', 'outbox', 'rejected'].map((s) => mainDb.all(s)).concat(mainDb.get('meta', 'snapshot')),
+  const [drugs, mahal, locations, balances, movements, outbox, rejected, par, meta] = await Promise.all(
+    ['drugs', 'mahal', 'locations', 'balances', 'movements', 'outbox', 'rejected', 'par'].map((s) => mainDb.all(s)).concat(mainDb.get('meta', 'snapshot')),
   );
   state.drugs = drugs;
   state.drugMap = new Map(drugs.map((d) => [d.no_kod, d]));
@@ -30,6 +31,7 @@ async function loadMain() {
   state.locations = locations;
   state.locMap = new Map(locations.map((l) => [l.id, l]));
   state.base = new Map(balances.map((b) => [b.key, b.qty]));
+  state.par = groupPar(par);
   state.movements = movements.sort((a, b) => (a.server_time < b.server_time ? 1 : -1));
   state.outbox = outbox.sort((a, b) => a.n - b.n);
   state.rejected = rejected;
@@ -52,7 +54,7 @@ export async function refresh() {
   await mainDb.replaceAll({
     drugs: snap.drugs, mahal: snap.mahal, locations: snap.locations,
     balances: snap.balances.map((b) => ({ key: keyOf(b.drug, b.location), qty: b.qty })),
-    movements: snap.movements,
+    movements: snap.movements, par: snap.par || [],
   });
   await mainDb.put('meta', { serverTime: snap.serverTime, counts: snap.counts }, 'snapshot');
   state.config = snap.config;
@@ -89,6 +91,21 @@ export function stockFor(noKod) {
     if (drug === noKod && qty !== 0) out.push({ location, qty, name: state.locMap.get(location)?.name || location });
   }
   return out.sort((a, b) => b.qty - a.qty);
+}
+
+// Balance against par for every location that has either. Balances are never filled in from par.
+export function parLines({ drug = null, location = null } = {}) {
+  const bal = balances();
+  const keys = new Set([...state.par.keys(), ...[...bal.keys()].filter((k) => bal.get(k) !== 0)]);
+  const out = [];
+  for (const k of keys) {
+    const [d, l] = k.split('|');
+    if ((drug && d !== drug) || (location && l !== location)) continue;
+    const p = state.par.get(k);
+    const qty = bal.has(k) ? bal.get(k) : undefined;
+    out.push({ drug: d, location: l, qty, par: p?.par || 0, lists: p?.lists || [], status: parStatus(qty, p?.par || 0) });
+  }
+  return out;
 }
 
 export function totalFor(noKod) {

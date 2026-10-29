@@ -4,6 +4,7 @@ import fs from 'node:fs';
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const PASSWORD = process.env.DEMO_PASSWORD;
 const DRUG = process.env.DEMO_DRUG || 'A10BX12000T1001';
+const PAR_DRUG = process.env.DEMO_PAR_DRUG || '02.0403.05';
 const OUT = 'docs/screens';
 if (!PASSWORD) throw new Error('Run against the demo database: DEMO_PASSWORD=... node test/e2e/screenshots.mjs');
 
@@ -50,10 +51,16 @@ const phone = { width: 390, height: 844 };
   await login(page, 'demo.ward');
   await go(page, `#/log?drug=${DRUG}`);
   await page.getByRole('button', { name: 'Transfer' }).click();
-  await page.selectOption('select[aria-label=From]', { index: 1 });
-  await page.selectOption('select[aria-label=To]', { index: 2 });
+  await page.selectOption('select[aria-label=From]', { label: 'Substore IPD' });
+  await page.selectOption('select[aria-label=To]', { label: 'Male Ward' });
   await page.fill('input[aria-label=Quantity]', '5');
   await page.screenshot({ path: `${OUT}/05-log-movement-390.png` });
+  await go(page, '#/stock');
+  await page.screenshot({ path: `${OUT}/10-ward-stock-par.png` });
+  await go(page, `#/drug/${PAR_DRUG}`);
+  await page.getByText('Stock vs par by location').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/09-drug-detail-par.png` });
   await context.close();
 }
 {
@@ -61,6 +68,11 @@ const phone = { width: 390, height: 844 };
   await login(page, 'admin');
   await go(page, '#/admin');
   await page.screenshot({ path: `${OUT}/06-admin-users.png` });
+  await go(page, '#/admin?tab=import');
+  await page.locator('.chip', { hasText: 'Floor stock list' }).click();
+  await page.selectOption('select[aria-label="Ward or unit"]', 'male-ward');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/11-admin-floorstock-import.png` });
   await context.close();
 }
 {

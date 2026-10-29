@@ -151,3 +151,21 @@ CREATE TABLE IF NOT EXISTS discrepancies (
   resolve_note TEXT
 );
 CREATE INDEX IF NOT EXISTS discrepancies_open ON discrepancies(resolved_at);
+
+-- Approved floor-stock maximums from the yearly "Senarai Floor Stock" PDFs. One row per PDF line.
+-- A re-import replaces a location's rows. drug is NULL when no formulary item matched.
+CREATE TABLE IF NOT EXISTS par_levels (
+  id INTEGER PRIMARY KEY,
+  location TEXT NOT NULL REFERENCES locations(id),
+  list TEXT NOT NULL CHECK (list IN ('floor','dda','aoh','trolley','recovery')),
+  item_name TEXT NOT NULL,
+  sku_unit TEXT,
+  max_qty INTEGER,
+  note TEXT,
+  drug TEXT REFERENCES drugs(no_kod),
+  match TEXT NOT NULL CHECK (match IN ('exact','high','low','none')),
+  score REAL NOT NULL,
+  imported_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS par_levels_loc ON par_levels(location);
+CREATE INDEX IF NOT EXISTS par_levels_drug ON par_levels(drug);

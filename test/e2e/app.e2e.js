@@ -143,3 +143,24 @@ test('pharmacist sees masked IC, reveals it on tap, and signing out wipes the de
   assert.ok(!after.includes('fm-patients'));
   await context.close();
 });
+
+test('par levels: ward stock screen and drug detail show balance vs par, low and not counted', async () => {
+  app.db.prepare(`INSERT INTO par_levels (location, list, item_name, sku_unit, max_qty, drug, match, score, imported_at)
+    VALUES ('wardB','floor','Demo Drug One 10mg Tablet','tab',20,'D1','exact',1,'2026-01-01'), ('wardB','floor','Demo Drug Two','tab',50,'D2','exact',1,'2026-01-01')`).run();
+  const c = client(app.base);
+  await c.login('seeder');
+  await c.post('/api/sync', { mode: 'live', ops: [{ id: crypto.randomUUID(), kind: 'movement', movement: { drug: 'D2', type: 'stocktake', to: 'wardB', qty: 5 } }] });
+  const { context, page, problems } = await open('pharm');
+  await page.locator('.topbar').waitFor();
+  await page.evaluate(() => { location.hash = '#/stock'; });
+  await page.locator('.chip', { hasText: 'Ward B' }).click();
+  const two = page.locator('li', { hasText: 'Demo Drug Two' });
+  await two.getByText('Low').waitFor();
+  assert.match(await two.innerText(), /5\s*\/ 50/);
+  await page.locator('li', { hasText: 'Demo Drug One' }).getByText('Not counted').waitFor();
+  await two.click();
+  await page.getByText('Stock vs par by location').waitFor();
+  await page.locator('li', { hasText: 'Ward B' }).getByText('Low').waitFor();
+  assert.deepEqual(problems, []);
+  await context.close();
+});

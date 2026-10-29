@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import { parseRecords, num, isoDate } from './csv.js';
-import { audit } from '../db.js';
+import { audit, now } from '../db.js';
 import { KATEGORI, UNITS } from '../../shared/patient-state.js';
+import { parseFloorStock, buildIndex, matchRow } from './floorstock.js';
 
 class Rollback extends Error {}
 
@@ -119,4 +120,29 @@ export function importPatients(db, text, { user = null, dryRun = false } = {}) {
   });
 }
 
-export const IMPORTERS = { master: importMaster, 'item-mahal': importItemMahal, 'kuota-unit': importKuotaUnit, patients: importPatients };
+// Replaces every par level for one location with the rows parsed from its floor stock list.
+export function importFloorStock(db, text, { user = null, dryRun = false, location } = {}) {
+  const loc = db.prepare('SELECT id, disabled FROM locations WHERE id = ?').get(String(location || ''));
+  if (!loc || loc.disabled) throw new Error('Choose an active location for this floor stock list.');
+  const rows = parseFloorStock(text);
+  if (!rows.length) throw new Error('No floor stock rows found. Is this a "Senarai Floor Stock" PDF?');
+  const index = buildIndex(db.prepare('SELECT no_kod, perihal FROM drugs').all());
+  const out = { matched: 0, unmatched: [], review: [] };
+  const result = run(db, user, `floorstock:${loc.id}`, dryRun, (r) => {
+    r.updated = db.prepare('DELETE FROM par_levels WHERE location = ?').run(loc.id).changes;
+    const ins = db.prepare(`INSERT INTO par_levels (location, list, item_name, sku_unit, max_qty, note, drug, match, score, imported_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    const at = now();
+    for (const row of rows) {
+      const m = matchRow(row.name, index);
+      ins.run(loc.id, row.list, row.name, row.unit, row.max, row.note || null, m.drug, m.match, m.score, at);
+      r.added++;
+      if (row.max === null) r.errors.push({ line: row.line, message: `No approved quantity for "${row.name}"` });
+      if (m.drug) out.matched++; else out.unmatched.push({ ...row, score: m.score });
+      if (m.match === 'low' || m.match === 'high') out.review.push({ ...row, drug: m.drug, match: m.match, score: m.score });
+    }
+  });
+  return { ...result, parsed: rows.length, ...out };
+}
+
+export const IMPORTERS = { floorstock: importFloorStock, master: importMaster, 'item-mahal': importItemMahal, 'kuota-unit': importKuotaUnit, patients: importPatients };
