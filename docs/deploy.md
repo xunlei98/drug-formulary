@@ -27,7 +27,7 @@ The app is a static PWA on Firebase Hosting. Data is in Cloud Firestore (asia-so
 
 ## Deploy
 
-`npm run deploy` needs either `npx firebase login` as a project owner, or `GOOGLE_APPLICATION_CREDENTIALS` pointing at a service account that has these roles (IAM & Admin > IAM): **Service Usage Consumer** (firebase-tools checks the APIs first; without it every deploy stops with `403 Permission denied to get service`), **Firebase Hosting Admin**, **Firebase Rules Admin**, **Cloud Datastore Index Admin**. The default `firebase-adminsdk` key has none of the first two, so with it the deploy fails before uploading anything. It is enough for the seed and account scripts.
+`npm run deploy` needs either `npx firebase login` as a project owner, or `GOOGLE_APPLICATION_CREDENTIALS` pointing at a service account that has these roles (IAM & Admin > IAM): **Service Usage Consumer** (firebase-tools checks the APIs first; without it every deploy stops with `403 Permission denied to get service`), **Firebase Hosting Admin**, **Firebase Rules Admin**, **Cloud Datastore Index Admin**. The default `firebase-adminsdk` key lacks at least Service Usage Consumer, so with it the deploy fails before uploading anything. It is enough for the seed and account scripts.
 
 ```
 npm run deploy          # firestore.rules + firestore.indexes.json + Hosting (builds first)
