@@ -11,7 +11,7 @@ export function photo(url, cls) {
   return box;
 }
 
-const pill = (text, tone) => (text ? h('span', { class: `pill ${tone}` }, text) : null);
+const pill = (text, tone, rx) => (text ? h('span', { class: `pill ${tone}`, 'data-rx': rx && String(text).trim().toUpperCase() }, text) : null);
 const line = (text, cls = '') => (text ? h('div', { class: `ln ${cls}` }, String(text).split('\n')[0]) : null);
 
 export function drugCard(d, extra) {
@@ -21,7 +21,7 @@ export function drugCard(d, extra) {
     h('div', { class: 'dbody' },
       h('div', { class: 'dname' }, d.perihal),
       line(v.brand), line(v.pharm_cat),
-      v.prescriber_cat && h('div', null, pill(v.prescriber_cat, prescriberTone(v.prescriber_cat))),
+      v.prescriber_cat && h('div', null, pill(v.prescriber_cat, prescriberTone(v.prescriber_cat), true)),
       line(v.indications), line(v.dosage),
       line(v.phis || d.no_kod, 'mono'),
       h('div', { class: 'pills' }, pill(v.procurement, procurementTone(v.procurement)), v.old_sheet_only && pill('Old formulary only', 's-none'), extra)));
@@ -32,7 +32,7 @@ const CLINICAL = [
   ['Brand', (v) => text(v.brand)],
   ['Form', (v) => pill(v.form, 's-ok')],
   ['Pharmacologic Category', (v) => text(v.pharm_cat)],
-  ['Prescriber Category', (v) => pill(v.prescriber_cat, prescriberTone(v.prescriber_cat))],
+  ['Prescriber Category', (v) => pill(v.prescriber_cat, prescriberTone(v.prescriber_cat), true)],
   ['Indications', (v) => text(v.indications), true],
   ['Dosage', (v) => text(v.dosage), true],
   ['Dilution', (v) => text(v.dilution), true],

@@ -262,7 +262,7 @@ export function allQuotas() {
 }
 
 export function searchDrugs(q, kind = 'all', limit = 50) {
-  let rows = q.trim() ? fuzzy(state.index, q, 400) : state.drugs.slice(0, 400);
+  let rows = q.trim() ? fuzzy(state.index, q, 400) : [...state.drugs].sort((a, b) => a.perihal.localeCompare(b.perihal));
   if (kind === 'mahal') rows = rows.filter((d) => state.mahal.has(d.no_kod));
   else if (kind === 'ubat') rows = rows.filter((d) => d.kategori === 'Ubat');
   else if (kind === 'bukan') rows = rows.filter((d) => d.kategori === 'Bukan Ubat');

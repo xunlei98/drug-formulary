@@ -21,6 +21,7 @@ export function home() {
   const card = h('div', { class: 'card' }, results);
   const views = chips([['gallery', 'Gallery'], ['list', 'List']], view, (v) => { view = v; localStorage.setItem(VIEW, v); paint(); });
   const tilesEl = h('div', { class: 'tiles' });
+  const heroEl = h('div');
   const input = h('input', { type: 'search', placeholder: 'Drug, brand, Kod PhIS or No Kod', 'aria-label': 'Search drugs', autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false' });
 
   const paint = () => {
@@ -48,14 +49,18 @@ export function home() {
     }
     clear(recents, !q && recent().map((r) => h('button', { class: 'chip', type: 'button', onClick: () => { input.value = r; q = r; paint(); } }, r)));
   };
-  const paintTiles = () => clear(tilesEl,
-    tile('Ubat', fmt.n(state.drugs.filter((d) => d.kategori === 'Ubat').length)),
-    tile('Ubat Mahal', fmt.n(state.mahal.size)),
-    tile('On hand lines', fmt.n([...balances().values()].filter((v) => v > 0).length)));
+  // The hero count is repainted with the tiles; built once, it read 0 until the formulary had downloaded.
+  const paintTiles = () => {
+    clear(heroEl, stat('Items in formulary', fmt.n(state.drugs.length)));
+    clear(tilesEl,
+      tile('Ubat', fmt.n(state.drugs.filter((d) => d.kategori === 'Ubat').length)),
+      tile('Ubat Mahal', fmt.n(state.mahal.size)),
+      tile('On hand lines', fmt.n([...balances().values()].filter((v) => v > 0).length)));
+  };
 
   input.addEventListener('input', () => { q = input.value; paint(); });
   const el = h('div', null,
-    stat('Items in formulary', fmt.n(state.drugs.length)),
+    heroEl,
     tilesEl,
     h('div', { class: 'search' }, icon('search'), input),
     chips([['all', 'All'], ['mahal', 'Ubat Mahal'], ['ubat', 'Ubat'], ['bukan', 'Bukan Ubat']], kind, (v) => { kind = v; paint(); }),
