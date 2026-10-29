@@ -7,7 +7,7 @@ export {
 } from 'firebase/auth';
 export {
   initializeFirestore, connectFirestoreEmulator, persistentLocalCache, persistentMultipleTabManager,
-  terminate, clearIndexedDbPersistence, enableNetwork, disableNetwork, waitForPendingWrites,
+  terminate, clearIndexedDbPersistence, waitForPendingWrites,
   doc, collection, query, where, orderBy, limit, documentId, getDoc, getDocs, getDocFromServer, getDocsFromServer,
   setDoc, updateDoc, writeBatch, onSnapshot, serverTimestamp, increment, deleteField, Timestamp, FieldPath,
 } from 'firebase/firestore';

@@ -4,7 +4,7 @@ import { mainDb } from './idb.js';
 import { db } from './fb.js';
 import {
   doc, collection, query, where, orderBy, documentId, getDoc, getDocs, getDocFromServer, setDoc, updateDoc, writeBatch,
-  onSnapshot, serverTimestamp, increment, Timestamp, FieldPath, enableNetwork, waitForPendingWrites,
+  onSnapshot, serverTimestamp, increment, Timestamp, FieldPath, waitForPendingWrites,
 } from '/vendor/firebase.js';
 import { applyMovement, keyOf } from '/shared/ledger.js';
 import { summarize, byUnit } from '/shared/quota.js';
@@ -376,7 +376,6 @@ export async function syncNow() {
   state.syncing = true;
   notify();
   try {
-    await enableNetwork(db());
     await within(waitForPendingWrites(db()), 15000);
     for (const o of pendingFor()) {
       if (await landed(o)) await mainDb.del('outbox', o.n);
