@@ -61,3 +61,16 @@ export function rebuild(movements) {
   for (const m of movements) applyMovement(b, m);
   return b;
 }
+
+export function inverseOf(m, newId) {
+  if (m.type === 'stocktake') return null;
+  const map = { receive: 'issue', issue: 'receive', transfer: 'transfer', adjust: 'adjust' };
+  const swap = m.type === 'transfer' ? { from: m.to, to: m.from } : { from: m.to || null, to: m.from || null };
+  return { id: newId, drug: m.drug, type: map[m.type], qty: m.qty, ...swap, reverses: m.id };
+}
+
+export function isInverse(orig, m) {
+  const inv = inverseOf(orig, m.id);
+  return !!inv && inv.drug === m.drug && inv.type === m.type && inv.qty === m.qty
+    && (inv.from || null) === (m.from || null) && (inv.to || null) === (m.to || null);
+}

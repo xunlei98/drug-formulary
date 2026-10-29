@@ -48,7 +48,7 @@ test('ledger: negativesAfter flags an overdraw without mutating', () => {
 
 test('quota: counts Active and Active - Pesara, waiting apart', () => {
   const ps = ['Active', 'Active - Pesara', 'Waiting List', 'Off', 'Defaulted', 'Active'].map((kategori) => ({ kategori }));
-  assert.deepEqual(summarize(5, ps), { quota: 5, used: 3, waiting: 1, remaining: 2, status: 'ok' });
+  assert.deepEqual(summarize(5, ps), { quota: 5, used: 3, waiting: 1, remaining: 2, over: 0, status: 'ok' });
 });
 
 test('quota: status thresholds', () => {
@@ -89,4 +89,12 @@ test('patient states: transitions', () => {
   assert.equal(canMove('Active', 'Waiting List'), false);
   assert.equal(canMove('Off', 'Defaulted'), false);
   assert.ok(nextStates('Active').includes('Off'));
+});
+
+test('quota: slots left never negative, over is counted', () => {
+  const ps = Array.from({ length: 5 }, () => ({ kategori: 'Active' }));
+  const s = summarize(3, ps);
+  assert.equal(s.remaining, 0);
+  assert.equal(s.over, 2);
+  assert.equal(s.status, 'over');
 });

@@ -55,13 +55,13 @@ Negative balances:
 
 ## Ubat Mahal quota
 
-`mahal_item { no_kod, quota, nota, tarikh_kemaskini }`. `quota` is the number of patients the hospital may have on that drug. This meaning is unconfirmed.
+`mahal_item { no_kod, quota, nota, tarikh_kemaskini }`. `quota` is the number of patients the hospital may have on that drug. This meaning is unconfirmed. It may be empty (12 rows in the real sheet). Then the drug is monitored but shows "quota not set".
 
 `mahal_unit_quota { id, no_kod, unit, kuantiti, tarikh_kemaskini, pegawai }` is an optional split by department.
 
 Counting rule: Active and Active - Pesara count against the quota. Waiting List is shown apart. Off and Defaulted count for nothing.
 
-Status by used / quota: `ok` below 80 percent, `near` from 80 percent up to but not including 100, `full` at exactly 100, `over` above 100. A quota of 0 with no patients is `full`. No quota row means the drug is not Ubat Mahal.
+Status by used / quota: `ok` below 80 percent, `near` from 80 percent up to but not including 100, `full` at exactly 100, `over` above 100 (shown as Over +N). Slots left never go below 0. The 80 percent line is a default (`QUOTA_NEAR_PCT`) for Alvin to confirm. A quota of 0 with no patients is `full`. No `mahal_item` row means the drug is not Ubat Mahal.
 
 ## Patient (Pesakit)
 

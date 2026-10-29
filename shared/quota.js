@@ -15,7 +15,8 @@ export function summarize(quota, patients, nearPct) {
     quota,
     used,
     waiting,
-    remaining: quota === null || quota === undefined ? null : quota - used,
+    remaining: quota === null || quota === undefined ? null : Math.max(0, quota - used),
+    over: quota === null || quota === undefined ? 0 : Math.max(0, used - quota),
     status: status(used, quota, nearPct),
   };
 }
