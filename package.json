@@ -7,7 +7,9 @@
     "test": "node --test test/*.test.js",
     "seed": "node src/cli.js seed",
     "start": "node src/server.js",
-    "cli": "node src/cli.js"
+    "cli": "node src/cli.js",
+    "backup": "node src/cli.js backup",
+    "demo": "node src/cli.js demo"
   },
   "keywords": [],
   "author": "",

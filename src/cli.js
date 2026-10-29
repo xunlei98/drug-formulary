@@ -4,6 +4,7 @@ import { openDb } from './db.js';
 import { createUser, tempPassword, checkPasswordRules } from './auth.js';
 import { IMPORTERS } from './import/index.js';
 import { seedExampleLocations } from './stock.js';
+import { backup, restore } from './backup.js';
 
 const [cmd, ...args] = process.argv.slice(2);
 const config = loadConfig();
@@ -35,7 +36,17 @@ else if (cmd === 'seed') {
   if (!IMPORTERS[kind] || !file) throw new Error(`Usage: import <${Object.keys(IMPORTERS).join('|')}> <file.csv> [--dry-run]`);
   const r = IMPORTERS[kind](db, fs.readFileSync(file, 'utf8'), { dryRun: args.includes('--dry-run') });
   console.log(JSON.stringify({ ...r, errors: r.errors.slice(0, 20) }, null, 1));
+} else if (cmd === 'backup') {
+  const r = backup(db, { dir: process.env.BACKUP_DIR || 'backups', keyFile: process.env.BACKUP_KEY_FILE || 'data/backup.key', keepDays: Number(process.env.BACKUP_KEEP_DAYS) || 14 });
+  console.log(`Backup written: ${r.file}. Removed ${r.pruned.length} old file(s).`);
+} else if (cmd === 'restore') {
+  if (!args[0] || !args[1]) throw new Error('Usage: restore <backup.db.enc> <new-database-file>');
+  restore(args[0], args[1], process.env.BACKUP_KEY_FILE || 'data/backup.key');
+  console.log(`Restored to ${args[1]}. Point DB_PATH at it and restart.`);
+} else if (cmd === 'demo') {
+  const { addDemoData } = await import('./demo.js');
+  console.log(addDemoData(db));
 } else {
-  console.log('Commands: seed, create-admin <username>, import <kind> <file> [--dry-run]');
+  console.log('Commands: backup, restore <file> <new-db>, demo, seed, create-admin <username>, import <kind> <file> [--dry-run]');
 }
 db.close();
