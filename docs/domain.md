@@ -10,7 +10,7 @@ This file is the source of truth for the data shapes. Code follows it.
 | pharmacist | Edit drugs and quotas, log stock, see and edit patients. |
 | ward | View drug info, quota counts, stock and locations. Log movements. Never sees patients. |
 
-The client uses the table in `public/shared/perm.js` only to hide buttons. `firestore.rules` enforces the same roles on every read and write. Roles live in `users/{uid}` (`role`, `location`, `disabled`).
+The client uses the table in `public/shared/perm.js` only to hide buttons. `firestore.rules` enforces the same roles on every read and write. Roles live in `users/{uid}` (`role`, `location`, `disabled`). Admins change other users' roles in Admin > Users. An admin can never change their own role or disable themselves (rules enforce it), so the last admin cannot be removed.
 
 ## Drug (formulary item)
 
@@ -30,7 +30,7 @@ A typed tree. `type` is `store`, `ward` or `shelf`. A `shelf` must have a parent
 
 Shelf or rack text is a `shelf` node named for the rack, for example "Rack B2", under a store. This lets balances answer "which rack".
 
-Seeded locations (Hospital Limbang): stores Main Store, Prepacking, Substore OPD, Substore IPD; wards and units ETD, Female Ward, HDU, ICU, Klinik Mata, Klinik Pakar, Klinik Psikiatrik, Male Ward, Maternity Ward, OPD MO Room, OT, Paeds Ward, Treatment Room, Unit Endoscopy, Unit Radiology. They live in one doc, `catalog/locations` (`byId`). Admins add, rename or disable them in Admin > Locations.
+Seeded locations (Hospital Limbang): stores Main Store, Prepacking, Substore OPD, Substore IPD; wards and units ETD, Female Ward, HDU, ICU, Klinik Mata, Klinik Pakar, Klinik Psikiatrik, Male Ward, Maternity Ward, OPD MO Room, OT, Paeds Ward, Treatment Room, Unit Endoscopy, Unit Radiology. They live in one doc, `catalog/locations` (`byId`). Admins add, rename or disable them in Admin > Locations. Delete works only for a location that was never used: no child locations, `par` list, checkpoint, movements or assigned users. The app checks all of these; rules check one key removed at a time, named in `deleted_last`, with no `par/{id}` or `checkpoints/{id}` (rules cannot query movements). Used locations can only be disabled.
 
 ## Par level
 

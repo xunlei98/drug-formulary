@@ -30,7 +30,10 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
-      allow create, update: if isAdmin() && validUser(request.resource.data);
+      allow create: if isAdmin() && validUser(request.resource.data);
+      // An admin cannot change their own role or disable themselves, so the last admin can never be removed.
+      allow update: if isAdmin() && validUser(request.resource.data)
+        && (request.auth.uid != uid || !changed().hasAny(['role', 'disabled']));
       // A user may only clear their own forced-password-change flag and stamp their sign-in time.
       allow update: if staff() && request.auth.uid == uid
         && changed().hasOnly(['must_change', 'last_login'])
@@ -62,11 +65,23 @@ service cloud.firestore {
     }
     match /catalog/{doc} {
       allow read: if staff();
-      allow write: if isAdmin();
+      allow write: if isAdmin() && (doc != 'locations' || locationsOk());
       // Pharmacists edit Ubat Mahal quotas inside the one mahal document.
       allow update: if doc == 'mahal' && isPharm() && changed().hasOnly(['items', 'updated'])
         && request.resource.data.items.keys().hasAll(resource.data.items.keys())
         && request.resource.data.items.diff(resource.data.items).affectedKeys().size() <= 1;
+    }
+
+    // A location may be removed only one at a time, named in deleted_last, and only if it has no par list and no
+    // stock checkpoint. The app also checks for movements first (rules cannot query). Used locations are disabled instead.
+    function locationsOk() {
+      let after = request.resource.data.byId.keys().toSet();
+      let removed = resource == null ? [].toSet() : resource.data.byId.keys().toSet().difference(after);
+      let gone = request.resource.data.get('deleted_last', '');
+      return removed.size() == 0
+        || (removed == [gone].toSet()
+          && !exists(/databases/$(database)/documents/par/$(gone))
+          && !exists(/databases/$(database)/documents/checkpoints/$(gone)));
     }
 
     // Patient counts by drug, unit and kategori, so ward staff can see quota use without reading patients.

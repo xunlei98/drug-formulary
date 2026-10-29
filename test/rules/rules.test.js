@@ -177,6 +177,33 @@ test('only admins write users, locations, formulary, par and meta; nobody writes
   await assertFails(deleteDoc(doc(db, 'users/ward2')));
 });
 
+test('an admin cannot change their own role or disable themselves, so one admin always remains', async () => {
+  const db = as('admin');
+  await assertFails(updateDoc(doc(db, 'users/admin'), { role: 'pharmacist' }));
+  await assertFails(updateDoc(doc(db, 'users/admin'), { disabled: true }));
+  await assertFails(updateDoc(doc(db, 'users/admin'), { role: deleteField() }));
+  await assertSucceeds(updateDoc(doc(db, 'users/admin'), { name: 'Admin One' }));
+  await assertSucceeds(updateDoc(doc(db, 'users/pharm'), { role: 'admin' }));
+  await assertSucceeds(updateDoc(doc(as('pharm'), 'users/admin'), { role: 'pharmacist' }));
+});
+
+test('a location is deleted only if unused: one at a time, named, no par list and no checkpoint', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'par/male-ward'), { rows: [] });
+    await setDoc(doc(ctx.firestore(), 'checkpoints/main-store'), { asOf: Timestamp.now(), balances: { D1: 3 }, uid: 'pharm' });
+  });
+  const del = (db, id, named = id) => updateDoc(doc(db, 'catalog/locations'), { [`byId.${id}`]: deleteField(), deleted_last: named });
+  await assertFails(del(as('pharm'), 'female-ward'));
+  await assertFails(del(as('admin'), 'female-ward', 'male-fridge'));
+  await assertFails(updateDoc(doc(as('admin'), 'catalog/locations'), { 'byId.female-ward': deleteField(), 'byId.male-fridge': deleteField(), deleted_last: 'female-ward' }));
+  await assertFails(del(as('admin'), 'male-ward'));
+  await assertFails(del(as('admin'), 'main-store'));
+  await assertFails(deleteDoc(doc(as('admin'), 'catalog/locations')));
+  // female-ward has movements, but rules cannot query them: the app checks movements before it offers Delete.
+  await assertSucceeds(del(as('admin'), 'female-ward'));
+  await assertSucceeds(updateDoc(doc(as('admin'), 'catalog/locations'), { 'byId.male-ward.disabled': true }));
+});
+
 test('delete = disable and drop the role; the user then gets nothing', async () => {
   await assertSucceeds(updateDoc(doc(as('admin'), 'users/ward2'), { disabled: true, role: deleteField() }));
   await assertFails(getDoc(doc(as('ward2'), 'formulary/c0')));

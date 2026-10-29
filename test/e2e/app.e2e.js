@@ -222,3 +222,42 @@ test('admin creates a ward user without being signed out, and the new user must 
   await s2.page.getByText('Choose a new password').waitFor();
   await s2.context.close();
 });
+
+test('admin adds, renames and deletes an unused location; a used one can only be disabled', async () => {
+  const { context, page, problems } = await open('adm');
+  page.on('dialog', (d) => d.accept());
+  await page.locator('.topbar').waitFor();
+  await page.evaluate(() => { location.hash = '#/admin?tab=locations'; });
+  await page.locator('input[aria-label=Name]').fill('E2E Fridge');
+  await page.locator('section', { hasText: 'Add location' }).locator('select').nth(1).selectOption('main-store');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  const row = page.locator('li.item').filter({ has: page.locator('input[aria-label="Name of E2E Fridge"]') });
+  await row.locator('input').fill('E2E Cold Box');
+  await row.getByRole('button', { name: 'Rename' }).click();
+  await page.getByText('Saved').waitFor();
+  const byId = async () => (await db.doc('catalog/locations').get()).data().byId;
+  assert.equal((await byId())['main-store-e2e-fridge'].name, 'E2E Cold Box');
+
+  // Never used: Delete removes it after the confirm.
+  await row.getByRole('button', { name: 'Delete' }).click();
+  await page.getByText('Deleted E2E Cold Box').waitFor();
+  assert.equal((await byId())['main-store-e2e-fridge'], undefined);
+
+  // ETD has a par list: Delete explains, Disable hides it.
+  const etd = page.locator('li.item').filter({ has: page.locator('input[aria-label="Name of ETD"]') });
+  await etd.getByRole('button', { name: 'Delete' }).click();
+  await page.getByText('ETD has a par (floor stock) list, so it cannot be deleted').waitFor();
+  assert.ok((await byId()).etd);
+  await etd.getByRole('button', { name: 'Disable' }).click();
+  await etd.getByRole('button', { name: 'Enable' }).waitFor();
+  assert.equal((await byId()).etd.disabled, true);
+  await etd.getByRole('button', { name: 'Enable' }).click();
+  await etd.getByRole('button', { name: 'Disable' }).waitFor();
+
+  // The admin's own row has no role picker; another user's does.
+  await page.evaluate(() => { location.hash = '#/admin?tab=users'; });
+  await page.locator('.user-row', { hasText: 'pharm' }).locator('select[aria-label="Role of pharm"]').waitFor();
+  assert.equal(await page.locator('select[aria-label="Role of adm"]').count(), 0);
+  assert.deepEqual(problems, []);
+  await context.close();
+});

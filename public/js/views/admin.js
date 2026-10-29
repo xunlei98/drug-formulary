@@ -1,7 +1,7 @@
 import { h, icon, clear, fmt } from '../dom.js';
 import { state, locationOptions, audit as auditLog } from '../store.js';
 import { db, emailFor, createAuthUser } from '../fb.js';
-import { doc, collection, query, orderBy, limit, getDocs, setDoc, updateDoc, writeBatch, serverTimestamp, increment, deleteField, FieldPath } from '/vendor/firebase.js';
+import { doc, collection, query, where, orderBy, limit, getDoc, getDocs, setDoc, updateDoc, writeBatch, serverTimestamp, increment, deleteField, FieldPath } from '/vendor/firebase.js';
 import { commit, setWrite } from '../rest.js';
 import { recountStats } from '../patients-data.js';
 import { importMaster, importItemMahal, importKuotaUnit, importPatients, importFloorStock, chunkDrugs } from '/shared/importers.js';
@@ -66,9 +66,27 @@ async function users(host, flash = null) {
       h('div', { class: 'sub' }, `${state.locMap.get(u.location)?.name || 'No ward'} · Last sign-in ${u.last_login?.toDate ? fmt.dateTime(u.last_login.toDate().toISOString()) : 'never'}`),
       u.role ? h('div', { class: 'sheet-actions' },
         h('button', { class: 'btn ghost', type: 'button', onClick: () => clear(revealed, h('div', { class: 'notice' }, `To reset ${u.username}'s password, run on the admin computer: npm run cloud:admin -- reset-password ${u.username}. It prints a new temporary password.`)) }, 'Reset password'),
+        u.id !== state.user.uid && roleSelect(u, (role) => setUser(u, { role }, 'user.role').catch((e) => { fail(e); users(host); })),
         u.id !== state.user.uid && h('button', { class: 'btn ghost', type: 'button', onClick: () => setUser(u, { disabled: !u.disabled }, u.disabled ? 'user.enable' : 'user.disable').catch(fail) }, u.disabled ? 'Enable' : 'Disable'),
         u.id !== state.user.uid && h('button', { class: 'btn danger', type: 'button', onClick: () => { if (confirm(`Delete ${u.username}? The account loses all access. Remove the sign-in itself in the Firebase console.`)) setUser(u, { disabled: true, role: deleteField(), location: deleteField() }, 'user.delete').catch(fail); } }, 'Delete'))
-        : h('div', { class: 'sub' }, 'No access. Remove the sign-in in Firebase console > Authentication.')))));
+        : h('div', { class: 'sub' }, 'No access. Remove the sign-in in Firebase console > Authentication.'),
+      u.id === state.user.uid && h('div', { class: 'sub' }, 'Your own role and access can only be changed by another admin, so there is always at least one admin.')))));
+}
+
+function roleSelect(u, onPick) {
+  const sel = h('select', { 'aria-label': `Role of ${u.username}`, onChange: () => onPick(sel.value) }, ROLES.map((r) => h('option', { value: r }, r)));
+  sel.value = u.role;
+  return sel;
+}
+
+// Why a location cannot be deleted, or null when it was never used.
+async function usedBecause(l) {
+  if (state.locations.some((x) => x.parent_id === l.id)) return 'locations under it';
+  if ((await getDoc(ref(`par/${l.id}`))).exists()) return 'a par (floor stock) list';
+  if ((await getDoc(ref(`checkpoints/${l.id}`))).exists()) return 'a stock balance';
+  if (!(await getDocs(query(collection(db(), 'movements'), where('locs', 'array-contains', l.id), limit(1)))).empty) return 'stock movements';
+  if (!(await getDocs(query(collection(db(), 'users'), where('location', '==', l.id), limit(1)))).empty) return 'staff accounts assigned to it';
+  return null;
 }
 
 const slug = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
@@ -89,16 +107,28 @@ async function locations(host) {
     await save([id], { id, name: nm.slice(0, 80), type: type.value, parent_id: parent.value || null, disabled: false, sort: 100 + rows.length }, 'location.add', id);
     locations(host);
   };
-  clear(host,
-    h('div', { class: 'notice' }, 'Hospital Limbang stores and wards are preset. Add shelves or fridges under a store if you count stock there.'),
+  const msg = h('div');
+  clear(host, msg,
+    h('div', { class: 'notice' }, 'Hospital Limbang stores and wards are preset. Add shelves or fridges under a store if you count stock there. Delete works only for a location that was never used; otherwise Disable it.'),
     h('section', { class: 'card card-pad' }, h('p', { class: 'label' }, 'Add location'), field('Name', name), field('Type', type), field('Under', parent),
       h('button', { class: 'btn', type: 'button', onClick: () => add().catch(fail) }, 'Add')),
     h('section', { class: 'card' }, h('ul', { class: 'list' }, rows.map((l) => {
       const nm = h('input', { type: 'text', value: l.name, 'aria-label': `Name of ${l.name}` });
       return h('li', { class: 'item' }, h('span', { class: 'pill' }, l.type), h('div', { class: 'grow' }, nm, h('div', { class: 'meta' }, l.parent_id ? `under ${state.locMap.get(l.parent_id)?.name}` : 'top level')),
         h('button', { class: 'btn ghost', type: 'button', onClick: () => (nm.value.trim() ? save([l.id, 'name'], nm.value.trim().slice(0, 80), 'location.rename', l.id).then(() => toast('Saved')) : Promise.reject(new Error('Name is required'))).catch(fail) }, 'Rename'),
-        h('button', { class: 'btn ghost', type: 'button', onClick: () => save([l.id, 'disabled'], !l.disabled, 'location.disable', l.id).then(() => locations(host)).catch(fail) }, l.disabled ? 'Enable' : 'Disable'));
+        h('button', { class: 'btn ghost', type: 'button', onClick: () => save([l.id, 'disabled'], !l.disabled, 'location.disable', l.id).then(() => locations(host)).catch(fail) }, l.disabled ? 'Enable' : 'Disable'),
+        h('button', { class: 'btn danger', type: 'button', title: 'Only for a location that was never used', onClick: () => remove(l).catch(fail) }, 'Delete'));
     }))));
+  async function remove(was) {
+    const l = state.locMap.get(was.id) || was; // the row may show a name renamed since it rendered
+    const why = await usedBecause(l);
+    if (why) { clear(msg, h('div', { class: 'notice warn' }, `${l.name} has ${why}, so it cannot be deleted. Use Disable: it is hidden from pickers and new movements, and its history and Kad Stok stay readable.`)); return; }
+    if (!confirm(`Delete ${l.name}? This can't be undone.`)) return;
+    await updateDoc(ref('catalog/locations'), new FieldPath('byId', l.id), deleteField(), 'deleted_last', l.id);
+    auditLog('location.delete', l.id);
+    toast(`Deleted ${l.name}`);
+    locations(host);
+  }
 }
 
 const stripKod = (mahal) => Object.fromEntries([...mahal].map(([k, { no_kod, ...m }]) => [k, m]));
