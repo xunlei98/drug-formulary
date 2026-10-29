@@ -51,13 +51,20 @@ Order is arrival order on the server (`seq`). Device time is kept for audit only
 
 Negative balances:
 - A live request (client online) that would go negative is rejected.
-- A replayed request (from the offline outbox) is accepted. The balance may go negative. The Review screen lists every negative balance for a pharmacist to fix with an adjust or a stocktake.
+- A replayed request (from the offline outbox) is accepted and flagged. The balance may go negative. A `discrepancies` row is written. The Review screen lists open ones for a pharmacist to resolve with an adjust or a stocktake.
+
+Immutability and reversal:
+- SQLite triggers block UPDATE and DELETE on `movements`. The `balances` table is a projection and can be rebuilt.
+- A mistake is undone by a reversing movement (the inverse). Its `reverses` column points at the original and is UNIQUE, so a movement can be reversed once. Adjust and stocktake cannot be undone this way. A live reversal that would overdraw is rejected.
+
+Ward scoping:
+- A ward user has one `location_id`. With `WARD_STOCK_SCOPE=own` (default) they see and log only for that ward and its shelves. `all` lets them see every location.
 
 ## Ubat Mahal quota
 
-`mahal_item { no_kod, quota, nota, tarikh_kemaskini }`. `quota` is the number of patients the hospital may have on that drug. This meaning is unconfirmed. It may be empty (12 rows in the real sheet). Then the drug is monitored but shows "quota not set".
+`mahal_item { no_kod, quota, nota, tarikh_kemaskini }`. `quota` is the number of patients the hospital may have on that drug. This meaning is unconfirmed (it could be units, boxes or a yearly quantity). It may be empty (12 rows in the real sheet). Then the drug is monitored but shows "quota not set".
 
-`mahal_unit_quota { id, no_kod, unit, kuantiti, tarikh_kemaskini, pegawai }` is an optional split by department.
+`mahal_unit_quota { id, no_kod, unit, kuantiti, tarikh_kemaskini, pegawai }` is an optional split by department. Patients are counted per unit against this split. The drug screen shows both the total and the per-unit table.
 
 Counting rule: Active and Active - Pesara count against the quota. Waiting List is shown apart. Off and Defaulted count for nothing.
 
@@ -71,11 +78,24 @@ Kategori is a state machine: Waiting List, Active, Active - Pesara, Off, Default
 
 IC is stored in full on the server. It is sent to clients masked (last 4 digits). Showing it in full needs a tap and writes an audit row.
 
+## Offline patient cache
+
+Controlled by `OFFLINE_PATIENTS` (`minimal` default, `off`).
+- `off`: no patient data is sent to or kept on any device.
+- `minimal`: only initials and the last 4 IC digits are cached, for roles with `patient.view`, in a separate IndexedDB (`fm-patients`). Ward users never get it. Sign-out, idle lock and expiry of the offline window delete it.
+- The full patient list is fetched online with no-store and is never kept on the device.
+- Creating a patient and editing identity fields are online only. Kategori and dates can be queued offline.
+- The outbox holds ids and values only. It holds no names or IC numbers.
+
+## Sessions and passwords
+
+Server-side sessions, token hashed in the database. Idle timeout 12 h for staff and 4 h for admin, sliding. A cached session works offline for `OFFLINE_DAYS` (default 3). Passwords: at least 10 characters, not a common password, at least 4 distinct characters, must not contain the username. First login forces a change.
+
 ## Sync
 
 The client queues operations in an outbox (IndexedDB). Each has a client UUID. `POST /api/sync` takes a batch in order. The server records every applied id in `applied_ops`. An id seen before returns the stored result and changes nothing.
 
-Operation kinds: `movement`, `patient_create`, `patient_update`.
+Operation kinds: `movement`, `patient_create` (live only), `patient_update`. In replay mode `patient_update` may only change kategori, tarikh_henti and tarikh_mula. A batch holds at most 200 operations. `mode` is `live` (the client was online when it acted) or `replay` (it came from the outbox).
 
 ## Modules
 
