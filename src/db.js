@@ -1,9 +1,11 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
+import path from 'node:path';
 
 const schema = fs.readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
 
 export function openDb(file) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
