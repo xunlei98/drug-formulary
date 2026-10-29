@@ -27,6 +27,8 @@ The app is a static PWA on Firebase Hosting. Data is in Cloud Firestore (asia-so
 
 ## Deploy
 
+`npm run deploy` needs either `npx firebase login` as a project owner, or `GOOGLE_APPLICATION_CREDENTIALS` pointing at a service account that has these roles (IAM & Admin > IAM): **Service Usage Consumer** (firebase-tools checks the APIs first; without it every deploy stops with `403 Permission denied to get service`), **Firebase Hosting Admin**, **Firebase Rules Admin**, **Cloud Datastore Index Admin**. The default `firebase-adminsdk` key has none of the first two, so with it the deploy fails before uploading anything. It is enough for the seed and account scripts.
+
 ```
 npm run deploy          # firestore.rules + firestore.indexes.json + Hosting (builds first)
 ```
@@ -55,6 +57,7 @@ Default `false`. With it false, the seed and the in-app importer accept only `DE
 - Admin > Users creates staff (a second Firebase app instance does the sign-up, so the admin stays signed in). The temporary password is shown once.
 - "Delete" removes the role and ward and sets `disabled`. The account then gets nothing: rules check `users/{uid}` on every read and write, and the app signs a disabled user out at once. To remove the sign-in itself: Firebase console > Authentication > Users > ⋮ > Delete account, or `npm run cloud:admin -- delete-auth <username> --yes`.
 - Password reset needs admin rights the browser does not have: `npm run cloud:admin -- reset-password <username> --yes`.
+- More accounts from the terminal: `npm run cloud:admin -- create-user demo.ward --role ward --location male-ward --name "Demo Ward" --yes`. Add `--password-file <path>` to append the temporary password to a file (mode 600) instead of printing it.
 - First admin: `cloud:admin create-admin` above. Console alternative: Authentication > Add user (email `alvin@staff.formulary.local`), then Firestore > `users/<that UID>` with `username`, `email`, `name` strings, `role: "admin"`, `location: null`, `disabled: false`, `must_change: true`.
 - Usernames without `@` sign in as `<username>@staff.formulary.local`. No mail is ever sent to these.
 
