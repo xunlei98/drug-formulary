@@ -30,13 +30,25 @@ function buildId() {
   return h.digest('hex').slice(0, 12);
 }
 
+function shellFiles() {
+  const list = ['/'];
+  for (const [dir, prefix] of [[publicDir, '/'], [sharedDir, '/shared/']]) {
+    for (const f of fs.readdirSync(dir, { recursive: true }).sort()) {
+      const rel = String(f).split(path.sep).join('/');
+      if (fs.statSync(path.join(dir, String(f))).isFile() && !(prefix === '/' && (rel === 'sw.js' || rel === 'index.html'))) list.push(prefix + rel);
+    }
+  }
+  return list;
+}
+
 export function createApp({ db, config }) {
   const ctxBase = { db, config };
   const table = compile([
     ...authRoutes(ctxBase), ...syncRoutes(ctxBase), ...catalogRoutes(ctxBase), ...patientRoutes(ctxBase), ...adminRoutes(ctxBase),
   ]);
   const build = buildId();
-  const transform = (rel, body) => (rel === '/sw.js' ? Buffer.from(body.toString().replaceAll('__BUILD__', build)) : body);
+  const shell = JSON.stringify(shellFiles());
+  const transform = (rel, body) => (rel === '/sw.js' ? Buffer.from(body.toString().replaceAll('__BUILD__', build).replaceAll('__SHELL__', shell)) : body);
 
   async function handle(req, res) {
     res.setHeader('content-security-policy', CSP);

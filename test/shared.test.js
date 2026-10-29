@@ -98,3 +98,21 @@ test('quota: slots left never negative, over is counted', () => {
   assert.equal(s.over, 2);
   assert.equal(s.status, 'over');
 });
+
+import { indexDrug, search } from '../shared/search.js';
+
+test('fuzzy search: names, brands, codes, typos', () => {
+  const idx = [
+    { no_kod: 'A1', kod_phis: 'N02BE01000T1001XX', perihal: 'Paracetamol 500 mg Tablet', brand: 'Panadol' },
+    { no_kod: 'A2', kod_phis: 'J01CA04000C1001XX', perihal: 'Amoxicillin 500 mg Capsule', brand: '' },
+    { no_kod: 'KPK00364', kod_phis: '', perihal: 'Glove Surgical Size 7', brand: '' },
+  ].map(indexDrug);
+  assert.equal(search(idx, 'paracet')[0].no_kod, 'A1');
+  assert.equal(search(idx, 'paracetmol')[0].no_kod, 'A1');
+  assert.equal(search(idx, 'panadol')[0].no_kod, 'A1');
+  assert.equal(search(idx, 'N02BE')[0].no_kod, 'A1');
+  assert.equal(search(idx, 'kpk003')[0].no_kod, 'KPK00364');
+  assert.equal(search(idx, 'amox 500')[0].no_kod, 'A2');
+  assert.equal(search(idx, 'zzzzzz').length, 0);
+  assert.equal(search(idx, '   ').length, 0);
+});

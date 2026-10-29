@@ -46,6 +46,14 @@ else if (cmd === 'seed') {
 } else if (cmd === 'demo') {
   const { addDemoData } = await import('./demo.js');
   console.log(addDemoData(db));
+  const pw = process.env.DEMO_PASSWORD;
+  if (pw) {
+    for (const [username, role, location_id] of [['demo.pharm', 'pharmacist', null], ['demo.ward', 'ward', 'ward-medical']]) {
+      if (!db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) await createUser(db, { username, display_name: `Demo ${role}`, role, password: pw, must_change: 0, location_id });
+    }
+    db.prepare("UPDATE users SET must_change = 0 WHERE username = 'admin'").run();
+    console.log('Demo users: admin, demo.pharm, demo.ward (shared DEMO_PASSWORD). Never use this DB for real data.');
+  }
 } else {
   console.log('Commands: backup, restore <file> <new-db>, demo, seed, create-admin <username>, import <kind> <file> [--dry-run]');
 }
