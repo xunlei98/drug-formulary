@@ -1,3 +1,4 @@
+// Caches the app shell only. Firestore data is never cached here: it is cross-origin and the SDK handles it.
 const BUILD = '__BUILD__';
 const SHELL = __SHELL__;
 const CACHE = `fm-shell-${BUILD}`;
@@ -13,7 +14,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
-  if (req.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
+  if (req.method !== 'GET' || url.origin !== location.origin) return;
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).then((res) => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put('/', copy)); }

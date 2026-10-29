@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateShape, applyMovement, rebuild, negativesAfter } from '../shared/ledger.js';
-import { status, summarize, byUnit } from '../shared/quota.js';
-import { can } from '../shared/perm.js';
-import { maskIc } from '../shared/ic.js';
-import { canMove, nextStates } from '../shared/patient-state.js';
+import { validateShape, applyMovement, rebuild, negativesAfter } from '../public/shared/ledger.js';
+import { status, summarize, byUnit } from '../public/shared/quota.js';
+import { can } from '../public/shared/perm.js';
+import { maskIc } from '../public/shared/ic.js';
+import { canMove, nextStates } from '../public/shared/patient-state.js';
 
 let n = 0;
 const mv = (o) => ({ id: `mv-${String(++n).padStart(8, '0')}`, drug: 'D1', qty: 10, ...o });
@@ -99,7 +99,7 @@ test('quota: slots left never negative, over is counted', () => {
   assert.equal(s.status, 'over');
 });
 
-import { indexDrug, search } from '../shared/search.js';
+import { indexDrug, search } from '../public/shared/search.js';
 
 test('fuzzy search: names, brands, codes, typos', () => {
   const idx = [

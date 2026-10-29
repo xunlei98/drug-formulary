@@ -17,11 +17,11 @@ export function more({ onLogout }) {
       can_('user.manage') && link('#/admin', 'users', 'Admin', 'Users, locations, import, audit'))),
     pw,
     h('div', { class: 'sheet-actions' },
-      h('button', { class: 'btn ghost', type: 'button', onClick: () => clear(pw, h('section', { class: 'card card-pad' }, changePasswordForm({ forced: false, onDone: () => { clear(pw); toast('Password changed'); }, onCancel: () => clear(pw) }))) }, icon('lock'), 'Change password'),
+      h('button', { class: 'btn ghost', type: 'button', onClick: () => clear(pw, h('section', { class: 'card card-pad' }, changePasswordForm({ forced: false, username: state.user.username, onDone: () => { clear(pw); toast('Password changed'); }, onCancel: () => clear(pw) }))) }, icon('lock'), 'Change password'),
       h('button', { class: 'btn danger', type: 'button', onClick: () => {
         if (pending && !confirm(`${pending} movement(s) are still waiting to sync on this device. They stay saved, but only sync when you sign in again. Sign out anyway?`)) return;
         onLogout();
       } }, icon('out'), 'Sign out')),
-    h('p', { class: 'sub' }, state.config.offlinePatients === 'minimal' && can_('patient.view') ? 'This device keeps initials and last 4 digits of IC for offline use. Signing out wipes them.' : 'No patient data is kept on this device.'));
+    h('p', { class: 'sub' }, can_('patient.view') ? 'Patient records you open are cached as initials and last 4 digits of IC only. Names and full IC are never stored. Signing out or idle lock wipes the cache.' : 'No patient data is kept on this device.'));
   return { el, title: 'Account' };
 }

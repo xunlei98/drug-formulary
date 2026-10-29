@@ -1,6 +1,5 @@
 import { h, icon, clear, fmt } from '../dom.js';
-import { state, can_, pendingFor, syncNow, dismissRejected, syncStatus } from '../store.js';
-import { get, post } from '../api.js';
+import { state, pendingFor, syncNow, dismissRejected, syncStatus, negatives, loadReviews, markReviewed } from '../store.js';
 import { stat, locName, toast, LABEL } from '../ui.js';
 
 function describe(o) {
@@ -17,7 +16,7 @@ export function syncView() {
     const st = syncStatus();
     const mine = pendingFor();
     const other = state.outbox.length - mine.length;
-    const rejected = state.rejected.filter((r) => r.user === state.user.username);
+    const rejected = state.rejected.filter((r) => r.uid === state.user.uid);
     clear(body,
       stat('Waiting to sync', mine.length, h('small', null, state.online ? '' : ' · offline')),
       h('div', { class: 'row wrap' },
@@ -36,21 +35,23 @@ export function syncView() {
   return { el: body, title: 'Sync', update: paint };
 }
 
+// Negative balances are computed on this device from the ledger. A review records that someone checked one;
+// it reappears if the balance changes again.
 export function review() {
   const body = h('div', { class: 'stack' });
-  const load = async () => {
-    try {
-      const { items } = await get('/api/discrepancies');
-      clear(body, stat('Stock to review', items.length),
-        h('p', { class: 'sub' }, 'These balances went below zero when an offline entry was synced. Recount, then mark each as reviewed. Nothing is changed automatically.'),
-        h('section', { class: 'card' }, h('ul', { class: 'list' }, items.length ? items.map((i) => h('li', { class: 'item' },
-          h('div', { class: 'grow' }, h('div', { class: 'name' }, i.perihal || i.drug), h('div', { class: 'meta' }, `${i.location_name || i.location}: ${i.qty_after} after sync, now ${i.qty_now ?? '?'} · ${fmt.dateTime(i.created_at)}`)),
-          h('button', { class: 'btn ghost', type: 'button', onClick: async () => {
-            const note = prompt('Note (optional)') ?? '';
-            await post(`/api/discrepancies/${i.id}/resolve`, { note }); toast('Marked reviewed'); load();
-          } }, 'Reviewed'))) : h('li', { class: 'empty' }, 'Nothing to review.'))));
-    } catch (e) { clear(body, h('div', { class: 'notice' }, e.offline ? 'Needs a connection.' : e.message)); }
+  let reviews = new Map();
+  const paint = () => {
+    const items = negatives().filter((n) => reviews.get(n.key)?.qty !== n.qty);
+    clear(body, stat('Stock to review', items.length),
+      h('p', { class: 'sub' }, 'These balances are below zero, usually because an offline entry synced late. Recount, then mark each as reviewed. Nothing is changed automatically.'),
+      h('section', { class: 'card' }, h('ul', { class: 'list' }, items.length ? items.map((i) => h('li', { class: 'item' },
+        h('div', { class: 'grow' }, h('div', { class: 'name' }, state.drugMap.get(i.drug)?.perihal || i.drug), h('div', { class: 'meta' }, `${locName(i.location)}: balance ${fmt.n(i.qty)}`)),
+        h('button', { class: 'btn ghost', type: 'button', onClick: async () => {
+          const note = prompt('Note (optional)') ?? '';
+          try { await markReviewed(i, note); reviews.set(i.key, { qty: i.qty }); toast('Marked reviewed'); paint(); } catch (e) { toast(e.message, true); }
+        } }, 'Reviewed'))) : h('li', { class: 'empty' }, 'Nothing to review.'))));
   };
-  load();
-  return { el: body, title: 'Stock review' };
+  loadReviews().then((r) => { reviews = r; paint(); }).catch(() => paint());
+  paint();
+  return { el: body, title: 'Stock review', update: paint };
 }

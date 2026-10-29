@@ -5,3 +5,11 @@ data/
 .env
 backups/
 test-results/
+public/vendor/
+public/sw.js
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*service-account*.json
+*-firebase-adminsdk-*.json
+.firebase/

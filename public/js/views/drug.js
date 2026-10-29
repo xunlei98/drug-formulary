@@ -1,10 +1,7 @@
 import { h, icon, clear, fmt } from '../dom.js';
-import { state, can_, parLines, totalFor, movementsFor, quotaSummary, unitSummaries, undoneIds, logMovement, enqueue } from '../store.js';
-import { put } from '../api.js';
+import { state, can_, parLines, totalFor, movementsFor, quotaSummary, unitSummaries, undoneIds, logMovement, saveQuota } from '../store.js';
 import { stat, statusPill, quotaBar, tape, locName, moveLine, toast } from '../ui.js';
 import { inverseOf } from '/shared/ledger.js';
-import { uuid } from '../dom.js';
-import { refresh } from '../store.js';
 import { parPill, parMeta } from './stock.js';
 
 const FIELDS = [
@@ -94,8 +91,9 @@ function quotaEditor(kod, q) {
     h('label', { class: 'field' }, h('span', null, 'Kuota (patients allowed)'), input),
     h('label', { class: 'field' }, h('span', null, 'Nota'), note),
     h('button', { class: 'btn', type: 'button', onClick: async () => {
-      try { await put(`/api/mahal/${encodeURIComponent(kod)}`, { quota: input.value, nota: note.value, units: m.units }); await refresh(); toast('Quota saved'); box.classList.add('hidden'); }
-      catch (e) { toast(e.offline ? 'Needs a connection' : e.message, true); }
+      if (!state.online) { toast('Needs a connection', true); return; }
+      try { await saveQuota(kod, input.value, note.value); toast('Quota saved'); box.classList.add('hidden'); }
+      catch (e) { toast(e.code === 'permission-denied' ? 'Not allowed' : e.message, true); }
     } }, 'Save'));
   return h('div', null, h('button', { class: 'btn ghost block', type: 'button', onClick: () => box.classList.toggle('hidden') }, 'Edit quota'), h('div', { class: 'section' }), box);
 }

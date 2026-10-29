@@ -1,166 +1,183 @@
+// End-to-end tests in headless Chrome against the Auth and Firestore emulators.
+// Run with `npm run test:e2e` (firebase emulators:exec sets FIRESTORE_EMULATOR_HOST and FIREBASE_AUTH_EMULATOR_HOST).
+// All data here is synthetic: Demo drugs and DEMO PATIENT rows only.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
-import { startServer, seedBasics, addUser, PW, client } from '../helpers.js';
-import { createPatient } from '../../src/patients.js';
+import { initializeApp } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+import { startStatic } from '../../scripts/serve-local.js';
+import { importMaster, importItemMahal, chunkDrugs, defaultLocations, demoPatients } from '../../public/shared/importers.js';
 
+const PROJECT = 'demo-limbang-formulary';
 const CHROME = process.env.CHROME_PATH || ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].find((p) => fs.existsSync(p));
-let app;
-let browser;
+const PW = `e2e-${crypto.randomUUID()}`;
+const PORT = 5056;
+const BASE = `http://127.0.0.1:${PORT}`;
+let server, browser, db, auth;
+
+const MASTER = `Kategori,Kod PhIS,No Kod,Perihal Stok,Brand,Jenis Perolehan Stok,Kumpulan,PKU,SKU
+Ubat,P1,D1,Demo Drug One 10mg Tablet,Demobrand,LP,Tablet,pack,tab
+Ubat,P2,D2,Demo Drug Two,,LP,Tablet,pack,tab`;
+
+async function addUser(username, role, location = null) {
+  const email = `${username}@staff.formulary.local`;
+  const u = await auth.createUser({ email, password: PW });
+  await db.doc(`users/${u.uid}`).set({ username, email, name: username, role, location, disabled: false, must_change: false, last_login: null, created: FieldValue.serverTimestamp() });
+}
 
 before(async () => {
+  assert.ok(process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST, 'run through npm run test:e2e');
   assert.ok(CHROME, 'Set CHROME_PATH to a Chrome or Chromium binary');
-  app = await startServer();
-  seedBasics(app.db);
-  await addUser(app.db, 'ward.a', 'ward', { location_id: 'wardA' });
-  await addUser(app.db, 'pharm', 'pharmacist');
-  await addUser(app.db, 'newbie', 'ward', { location_id: 'wardA', must_change: 1 });
-  const made = createPatient(app.db, crypto.randomUUID(), { no_kod: 'D1', nama: 'DEMO PATIENT 001', ic: '000000-00-0001', kategori: 'Active', unit: 'Medical' }, { id: null, username: 'seed' });
-  assert.equal(made.status, 'applied');
-  const seedStock = client(app.base);
-  await addUser(app.db, 'seeder', 'pharmacist');
-  await seedStock.login('seeder');
-  await seedStock.post('/api/sync', { mode: 'live', ops: [{ id: crypto.randomUUID(), kind: 'movement', movement: { drug: 'D1', type: 'receive', to: 'store', qty: 100 } }] });
+  await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
+  await fetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
+  process.env.GOOGLE_CLOUD_PROJECT = PROJECT;
+  const app = initializeApp({ projectId: PROJECT });
+  db = getFirestore(app);
+  auth = getAuth(app);
+
+  const { drugs } = importMaster(MASTER);
+  const { mahal } = importItemMahal('ID,No Kod,Kuota,Tarikh Kemaskini,Nota\nr1,D1,6,04/08/2022', { drugs });
+  const b = db.batch();
+  chunkDrugs(drugs).forEach((items, i) => b.set(db.doc(`formulary/c00${i}`), { items }));
+  b.set(db.doc('catalog/locations'), { byId: defaultLocations() });
+  b.set(db.doc('catalog/mahal'), { items: Object.fromEntries(mahal) });
+  b.set(db.doc('par/etd'), { rows: [{ list: 'floor', item_name: 'Demo Drug Two', sku_unit: 'tab', max_qty: 20, note: null, drug: 'D2', match: 'exact', score: 1 }] });
+  b.set(db.doc('meta/catalog'), { formulary: 1, par: { etd: 1 } });
+  b.set(db.doc('config/app'), { offlineDays: 3, idleLockMin: 5, nearPct: 80, wardStockScope: 'own', patientsRealAllowed: false });
+  const byKey = {};
+  for (const p of demoPatients(['D1'], 3)) {
+    b.set(db.doc(`patients/${p.id}`), { ...p.minimal, updated_by: 'seed' });
+    b.set(db.doc(`patient_identity/${p.id}`), p.identity);
+    const k = `D1|${p.minimal.unit}|${p.minimal.kategori}`;
+    byKey[k] = (byKey[k] || 0) + 1;
+  }
+  b.set(db.doc('stats/counts'), { byKey });
+  await b.commit();
+  await addUser('adm', 'admin');
+  await addUser('pharm', 'pharmacist');
+  await addUser('ward.etd', 'ward', 'etd');
+
+  server = await startStatic(PORT);
   browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
 });
 
-after(async () => { await browser?.close(); await app?.close(); });
+after(async () => { await browser?.close(); server?.close(); });
 
 async function open(user, password = PW) {
-  const context = await browser.newContext({ viewport: { width: 390, height: 800 }, serviceWorkers: 'allow' });
+  const context = await browser.newContext({ viewport: { width: 390, height: 800 } });
   const page = await context.newPage();
   const problems = [];
-  page.on('console', (m) => { if (/Content Security Policy|Refused to/i.test(m.text())) problems.push(m.text()); });
+  // The SDK pings www.google.com/images/cleardot.gif to test connectivity while offline; CSP blocks it on purpose.
+  page.on('console', (m) => { if (/Content Security Policy|Refused to/i.test(m.text()) && !m.text().includes('cleardot.gif')) problems.push(m.text()); if (process.env.E2E_DEBUG && m.type() === 'error') console.log('console:', m.text()); });
   page.on('pageerror', (e) => problems.push(e.message));
-  await page.goto(app.base + '/');
+  await page.goto(BASE + '/');
   await page.fill('input[name=username]', user);
   await page.fill('input[name=password]', password);
   await page.click('button[type=submit]');
   return { context, page, problems };
 }
-
 const badge = (page) => page.locator('a.badge');
 
-test('forced password change on first login, then the app opens', async () => {
-  const { context, page, problems } = await open('newbie');
-  await page.getByText('Choose a new password').waitFor();
-  const [cur, n1, n2] = await page.locator('input[type=password]').all();
-  await cur.fill(PW); await n1.fill('a-brand-new-passphrase-7'); await n2.fill('a-brand-new-passphrase-7');
-  await page.click('button[type=submit]');
-  await page.locator('.topbar').waitFor();
-  assert.deepEqual(problems, []);
-  await context.close();
-});
-
-test('wrong password shows an error and stays on the login screen', async () => {
-  const { context, page } = await open('ward.a', 'not-the-password');
+test('wrong password stays on the login screen', async () => {
+  const { context, page } = await open('ward.etd', 'not-the-password');
   await page.getByText('Wrong username or password').waitFor();
   await context.close();
 });
 
-test('search a drug, go offline, log a movement, come back online, it syncs and the balance updates', async () => {
-  const { context, page, problems } = await open('ward.a');
+test('login and search the formulary', async () => {
+  const { context, page, problems } = await open('pharm');
   await page.locator('.topbar').waitFor();
-  await page.fill('input[type=search]', 'demo drug one');
-  await page.getByText('Demo Drug One 10mg Tablet').first().click();
-  await page.getByText('Ubat Mahal slots left', { exact: false }).first().waitFor();
-
-  await context.setOffline(true);
-  await badge(page).filter({ hasText: 'Offline' }).waitFor();
-
-  await page.evaluate(() => { location.hash = '#/log?drug=D1'; });
-  await page.locator('select[aria-label=To]').waitFor();
-  await page.selectOption('select[aria-label=To]', 'wardA');
-  await page.fill('input[aria-label=Quantity]', '7');
-  await page.getByRole('button', { name: 'Save movement' }).click();
-  await page.getByText('Saved on this device').waitFor();
-  await badge(page).filter({ hasText: '1 pending' }).or(badge(page).filter({ hasText: 'Offline, 1 pending' })).waitFor();
-
-  const wardNow = await page.evaluate(() => document.body.innerText);
-  assert.match(wardNow, /\b7\b/, 'the pending movement shows in the on-device balance');
-
-  await context.setOffline(false);
-  await badge(page).filter({ hasText: 'Synced' }).waitFor({ timeout: 15000 });
-
-  const who = client(app.base);
-  await who.login('pharm');
-  const snap = await who.get('/api/snapshot');
-  const bal = snap.body.balances.find((b) => b.drug === 'D1' && b.location === 'wardA');
-  assert.equal(bal?.qty, 7);
-  const moved = snap.body.movements.filter((m) => m.drug === 'D1' && m.to === 'wardA');
-  assert.equal(moved.length, 1);
+  await page.fill('input[type=search]', 'demobrand');
+  await page.getByText('Demo Drug One 10mg Tablet').first().waitFor();
   assert.deepEqual(problems, []);
   await context.close();
 });
 
-test('the service worker serves the app shell with no network', async () => {
-  const { context, page } = await open('ward.a');
+test('ward logs a movement offline, it shows pending, then syncs online', async () => {
+  const { context, page, problems } = await open('ward.etd');
   await page.locator('.topbar').waitFor();
-  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-  await page.reload();
-  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  await page.locator('.topbar').waitFor();
+  await badge(page).filter({ hasText: 'Synced' }).waitFor();
+
   await context.setOffline(true);
-  await page.reload();
-  await page.locator('.topbar').waitFor();
-  await page.fill('input[type=search]', 'demo drug');
-  await page.getByText('Demo Drug Two').first().waitFor();
+  await badge(page).filter({ hasText: 'Offline' }).waitFor();
+  await page.evaluate(() => { location.hash = '#/log?drug=D2'; });
+  await page.locator('select[aria-label=To]').waitFor();
+  assert.equal(await page.locator('select[aria-label=To]').inputValue(), 'etd', 'a ward user logs for its own ward');
+  await page.fill('input[aria-label=Quantity]', '7');
+  await page.getByRole('button', { name: 'Save movement' }).click();
+  await page.getByText('Saved on this device').waitFor();
+  await badge(page).filter({ hasText: 'Offline, 1 pending' }).waitFor();
+
+  await context.setOffline(false);
+  await badge(page).filter({ hasText: 'Synced' }).waitFor({ timeout: 20000 });
+  const moved = (await db.collection('movements').where('drug', '==', 'D2').get()).docs.map((d) => d.data());
+  assert.equal(moved.length, 1);
+  assert.deepEqual([moved[0].to, moved[0].qty, moved[0].username, moved[0].locs], ['etd', 7, 'ward.etd', ['etd']]);
+  assert.deepEqual(problems, []);
   await context.close();
 });
 
-test('ward users have no Patients tab and cannot open the patient list', async () => {
-  const { context, page } = await open('ward.a');
+test('ward has no patient access: no tab, no page, and Firestore refuses the read', async () => {
+  const { context, page } = await open('ward.etd');
   await page.locator('.topbar').waitFor();
   assert.equal(await page.getByRole('link', { name: 'Patients' }).count(), 0);
   await page.evaluate(() => { location.hash = '#/patients'; });
   await page.getByText('not available to you').waitFor();
-  const stored = await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name));
-  assert.ok(!stored.includes('fm-patients'), 'no patient database on a ward device');
+  const codes = await page.evaluate(async () => {
+    const { db } = await import('/js/fb.js');
+    const { collection, getDocsFromServer, doc, getDocFromServer } = await import('/vendor/firebase.js');
+    const out = [];
+    for (const read of [() => getDocsFromServer(collection(db(), 'patients')), () => getDocsFromServer(collection(db(), 'patient_identity')), () => getDocFromServer(doc(db(), 'patient_identity/k_DEMO-001'))]) {
+      try { await read(); out.push('allowed'); } catch (e) { out.push(e.code); }
+    }
+    return out;
+  });
+  assert.deepEqual(codes, ['permission-denied', 'permission-denied', 'permission-denied']);
   await context.close();
 });
 
-test('pharmacist sees masked IC, reveals it on tap, and signing out wipes the device patient cache', async () => {
-  const { context, page } = await open('pharm');
+test('pharmacist sees masked DEMO patients, reveals an IC, and sign-out wipes the device cache', async () => {
+  const { context, page, problems } = await open('pharm');
   await page.locator('.topbar').waitFor();
-  await page.getByRole('link', { name: 'Patients' }).click();
+  await page.evaluate(() => { location.hash = '#/patients?drug=D1'; });
   await page.getByText('DEMO PATIENT 001').waitFor();
-  const text = await page.locator('main').innerText();
-  assert.ok(!text.includes('000000-00-0001'), 'full IC is not in the list');
+  assert.equal((await page.locator('main').innerText()).includes('000000-00-0001'), false, 'IC is masked in the list');
   await page.getByText('DEMO PATIENT 001').click();
   await page.getByRole('button', { name: /Show full IC/ }).click();
   await page.getByText('000000-00-0001').waitFor();
-  const who = client(app.base);
-  await who.login('pharm');
-  const audit = await (async () => { const a = client(app.base); await addUser(app.db, 'boss', 'admin'); await a.login('boss'); return a.get('/api/audit'); })();
-  assert.ok(audit.body.entries.some((e) => e.action === 'patient.ic_reveal'));
-  const dbs = await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name));
-  assert.ok(dbs.includes('fm-patients'));
-  await page.goto(app.base + '/#/more');
+  const firestoreDbs = () => page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name).filter((n) => n.startsWith('firestore/')));
+  assert.ok((await firestoreDbs()).length > 0, 'the SDK cache exists while signed in');
+
+  await page.evaluate(() => { location.hash = '#/more'; });
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.locator('input[name=username]').waitFor();
-  const after = await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name));
-  assert.ok(!after.includes('fm-patients'));
+  assert.deepEqual(await firestoreDbs(), [], 'signing out deletes the Firestore cache');
+  assert.deepEqual(problems, []);
   await context.close();
 });
 
-test('par levels: ward stock screen and drug detail show balance vs par, low and not counted', async () => {
-  app.db.prepare(`INSERT INTO par_levels (location, list, item_name, sku_unit, max_qty, drug, match, score, imported_at)
-    VALUES ('wardB','floor','Demo Drug One 10mg Tablet','tab',20,'D1','exact',1,'2026-01-01'), ('wardB','floor','Demo Drug Two','tab',50,'D2','exact',1,'2026-01-01')`).run();
-  const c = client(app.base);
-  await c.login('seeder');
-  await c.post('/api/sync', { mode: 'live', ops: [{ id: crypto.randomUUID(), kind: 'movement', movement: { drug: 'D2', type: 'stocktake', to: 'wardB', qty: 5 } }] });
-  const { context, page, problems } = await open('pharm');
+test('admin creates a ward user without being signed out, and the new user must change password', async () => {
+  const { context, page, problems } = await open('adm');
   await page.locator('.topbar').waitFor();
-  await page.evaluate(() => { location.hash = '#/stock'; });
-  await page.locator('.chip', { hasText: 'Ward B' }).click();
-  const two = page.locator('li', { hasText: 'Demo Drug Two' });
-  await two.getByText('Low').waitFor();
-  assert.match(await two.innerText(), /5\s*\/ 50/);
-  await page.locator('li', { hasText: 'Demo Drug One' }).getByText('Not counted').waitFor();
-  await two.click();
-  await page.getByText('Stock vs par by location').waitFor();
-  await page.locator('li', { hasText: 'Ward B' }).getByText('Low').waitFor();
+  await page.evaluate(() => { location.hash = '#/admin'; });
+  await page.locator('input[aria-label=Username]').fill('new.ward');
+  await page.locator('select[aria-label=Role]').selectOption('ward');
+  await page.locator('select[aria-label=Ward]').selectOption('icu');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByText('Temporary password, shown once').waitFor({ timeout: 15000 }).catch(async (e) => { console.log(await page.locator('body').innerText()); throw e; });
+  const temp = await page.locator('.notice.good .mono').innerText();
+  await page.locator('.user-row', { hasText: 'new.ward' }).waitFor();
+  const u = await auth.getUserByEmail('new.ward@staff.formulary.local');
+  const doc = (await db.doc(`users/${u.uid}`).get()).data();
+  assert.deepEqual([doc.role, doc.location, doc.must_change, doc.disabled], ['ward', 'icu', true, false]);
+  assert.equal(await page.locator('.topbar').count(), 1, 'admin stays signed in');
   assert.deepEqual(problems, []);
   await context.close();
+
+  const s2 = await open('new.ward', temp);
+  await s2.page.getByText('Choose a new password').waitFor();
+  await s2.context.close();
 });

@@ -1,105 +1,100 @@
-# Deploying
+# Deploy on Firebase (Spark, free)
 
-## Where to host (recommendation)
+The app is a static PWA on Firebase Hosting. Data is in Cloud Firestore (asia-southeast1). Sign-in is Firebase Auth (email and password). There is no server code: every check is in `firestore.rules`, so the project stays on the free Spark plan. **Never upgrade the plan.** Spark has no Cloud Functions and no scheduled backups, and the app needs neither.
 
-1. A hospital PC first. Put it on a UPS. Name one owner who is responsible for it, for updates and for backups. Staff reach it on the hospital network. This keeps patient data inside the hospital.
-2. A Cloudflare tunnel only behind Cloudflare Access, and only with fake data, until MOH approves it.
-3. A VPS only with MOH or IT approval.
+## What runs where
 
-Real patient data must not go onto any of these until MOH data governance and PDPA approval is given.
-
-## HTTPS
-
-Phones need HTTPS to install the app and to keep offline data. Only `localhost` is exempt. So:
-
-- Test on the same PC at `http://localhost:3000` with `SECURE_COOKIES=0`.
-- Anything else needs HTTPS. Use a reverse proxy (Caddy or nginx) with a certificate, or a Cloudflare tunnel. Set `TRUST_PROXY=1` when a proxy sits in front, so the real client IP is used for login limits. Only set it behind a proxy you control.
-- Caddy example, in a Caddyfile:
-
-```
-formulary.example.org {
-  reverse_proxy 127.0.0.1:3000
-}
-```
-
-## First install
-
-You need Node 20.
-
-```
-npm install
-npm run seed
-npm start
-```
-
-`seed` imports `data/master.csv`, `data/item-mahal.csv` and `data/kuota.csv` if present. It adds the Hospital Limbang stores and wards and creates the first admin. It prints a temporary password once. Change it at first sign-in. To choose the admin name and password, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` first.
-
-Run it as a service so it restarts after a reboot (systemd or pm2). Run it as a normal user, never as root.
-
-## Settings (environment variables)
-
-| Name | Default | Meaning |
+| Piece | Where | Notes |
 | --- | --- | --- |
-| HOST | 127.0.0.1 | Address to listen on. Use 127.0.0.1 behind a proxy. |
-| PORT | 3000 | Port. |
-| DB_PATH | ./formulary.db | Database file. |
-| SECURE_COOKIES | on | `0` only on localhost. |
-| TRUST_PROXY | off | `1` behind a proxy you control. |
-| SESSION_IDLE_HOURS | 12 | Idle timeout for staff. |
-| ADMIN_IDLE_HOURS | 4 | Idle timeout for admin. |
-| OFFLINE_DAYS | 3 | Days a cached sign-in works offline. |
-| IDLE_LOCK_MIN | 5 | Minutes idle before patient roles are signed out. |
-| OFFLINE_PATIENTS | minimal | `off` stops all patient caching on devices. |
-| WARD_STOCK_SCOPE | own | `all` lets ward users see every location. |
-| QUOTA_NEAR_PCT | 80 | Percent of quota where status turns "near". |
-| LOGIN_MAX_FAILS | 5 | Failed sign-ins before lockout. |
-| LOGIN_WINDOW_MIN | 15 | Window for the count. |
-| BACKUP_DIR | backups | Where backups go. |
-| BACKUP_KEY_FILE | data/backup.key | Key file. Created on first backup. |
-| BACKUP_KEEP_DAYS | 14 | Older backups are deleted. |
+| App shell (HTML, JS, CSS, fonts) | Firebase Hosting | CSP, nosniff, no-referrer headers in `firebase.json`. The service worker caches the shell only. |
+| Formulary, Item Mahal, Kuota, locations, par levels | Firestore, read by all staff | Chunked docs, version-gated through `meta/catalog`, copied into the device's own IndexedDB. |
+| Movements | Firestore, one doc each, create-only | Client picks the id, so an offline retry cannot duplicate. Balances are computed on the device. |
+| Patients | `patients` (minimal: initials, last 4 IC) and `patient_identity` (name, IC) | Identity is read over REST with no-store, never listened to and never cached. |
+| Accounts | Firebase Auth + `users/{uid}` (role, ward, disabled) | Admin creates accounts in the app. |
 
-## Nightly backup
+## One-time setup on the admin PC
 
-Add to cron (run `crontab -e` as the service user):
+1. Install Node 20 and run `npm install` in this folder.
+2. Sign in the Firebase CLI as a project owner: `npx firebase login` (opens a browser).
+3. Credential for the seed and account scripts (the simpler route; no extra tools needed):
+   Firebase console > Project settings (gear) > **Service accounts** > **Generate new private key** > Generate key.
+   Save the JSON file **outside this folder**, for example `C:\keys\limbang-formulary.json` or `~/keys/limbang-formulary.json`. Never commit, email or upload it.
+   Then, in the terminal you run the scripts from:
+   - macOS/Linux: `export GOOGLE_APPLICATION_CREDENTIALS=~/keys/limbang-formulary.json`
+   - Windows PowerShell: `$env:GOOGLE_APPLICATION_CREDENTIALS="C:\keys\limbang-formulary.json"`
+   (The other route, `gcloud auth application-default login`, needs the Google Cloud SDK installed. The key file is simpler.)
+   Delete the key in the same console page when the trial ends or if it may have leaked.
 
-```
-15 2 * * * cd /path/to/formulary-app && DB_PATH=/path/to/formulary.db npm run -s backup >> backup.log 2>&1
-```
-
-Then copy `backups/` to a second place each night: another PC, a hospital file share or an external disk. Copy `data/backup.key` once, to a different place, and keep it safe. Decide who owns this copy.
-
-Restore to a new file, then point the server at it:
+## Deploy
 
 ```
-node src/cli.js restore backups/<file>.db.enc /path/to/restored.db
-DB_PATH=/path/to/restored.db npm start
+npm run deploy          # firestore.rules + firestore.indexes.json + Hosting (builds first)
 ```
 
-Test a restore once after setup.
+The site is then at https://limbang-formulary.web.app.
 
-## Updating
+## Seed the trial data
 
-Stop the server, take a backup, replace the code, run `npm install`, start again. Version 1 has no migration system. Missing tables are created at start, but a change to an existing table needs a manual step. Test an update on a restored copy of the backup first.
-
-## Demo mode
+Export the sheets as CSV into a folder outside the repo (`master.csv`, `item-mahal.csv`, `kuota.csv`) with the floor stock PDFs in `floorstock/<Ward name>.pdf` (needs `pdftotext` from poppler-utils; `.txt` from `pdftotext -layout` also works).
 
 ```
-DB_PATH=data/demo.db DEMO_PASSWORD='choose-one-12chars' npm run demo
-DB_PATH=data/demo.db npm start
+npm run seed:cloud -- --data /path/to/data --yes
+npm run cloud:admin -- create-admin alvin --name "Alvin Lim" --yes
 ```
 
-This adds fake DEMO patients and users admin, demo.pharm and demo.ward. Never use the demo database for real work.
+The seed writes the formulary, Item Mahal, Kuota by unit, the 19 locations, par levels, `config/app`, and 24 **DEMO** patients. It is safe to run again: it overwrites the same documents and bumps the catalog version, so devices download the new catalog once. `create-admin` prints a temporary password once; it must be changed at first sign-in. Nothing in this repo holds a password.
 
-## Floor stock par levels
+Without `--yes` both scripts refuse to touch a real project.
 
-Floor stock PDFs need `pdftotext` (Debian/Ubuntu: `apt install poppler-utils`). Put one PDF per unit, named for the unit (for example `Male Ward.pdf`), in a folder and run:
+## Patient data: PATIENTS_REAL_ALLOWED
+
+Default `false`. With it false, the seed and the in-app importer accept only `DEMO PATIENT nnn` rows with IC `000000-00-nnnn` and refuse everything else. Reason: real names and IC numbers need MOH data-governance and PDPA approval before they go to any cloud project, and this trial project is on a personal Google account. Only after approval, and after the project has moved to the MOH account, set `PATIENTS_REAL_ALLOWED=true` for the seed run (`config/app.patientsRealAllowed` follows it and unlocks the in-app importer).
+
+## Accounts
+
+- Admin > Users creates staff (a second Firebase app instance does the sign-up, so the admin stays signed in). The temporary password is shown once.
+- "Delete" removes the role and ward and sets `disabled`. The account then gets nothing: rules check `users/{uid}` on every read and write, and the app signs a disabled user out at once. To remove the sign-in itself: Firebase console > Authentication > Users > ⋮ > Delete account, or `npm run cloud:admin -- delete-auth <username> --yes`.
+- Password reset needs admin rights the browser does not have: `npm run cloud:admin -- reset-password <username> --yes`.
+- First admin: `cloud:admin create-admin` above. Console alternative: Authentication > Add user (email `alvin@staff.formulary.local`), then Firestore > `users/<that UID>` with `username`, `email`, `name` strings, `role: "admin"`, `location: null`, `disabled: false`, `must_change: true`.
+- Usernames without `@` sign in as `<username>@staff.formulary.local`. No mail is ever sent to these.
+
+## Moving to the MOH work account
+
+1. Create the project there (Spark), enable Email/Password Auth and Firestore in asia-southeast1, add a Web app.
+2. Put its web config in `public/js/firebase-config.js`.
+3. `npx firebase use --add` (alias e.g. `moh`), or set `FIREBASE_PROJECT=<id>` for `npm run deploy`. The scripts take `--project <id>` or `FIREBASE_PROJECT`.
+4. New service account key from the new project, then deploy, seed and create the first admin as above.
+
+## Daily read estimate (~100 staff)
+
+Assumptions: 15 pharmacists/admins and 85 ward staff, each opening the app 4 times a day after the cache went stale, about 300 movements a day.
+
+| What | Reads/day |
+| --- | --- |
+| Ward opens: 6 small docs + own checkpoint + own-ward movements since it (~40 per open × 340) | 13,600 |
+| Pharmacist opens: 6 docs + 19 checkpoints + at most ~200 movements (~230 × 60) | 13,800 |
+| Live movement fan-out (each new movement reaches ~13 open listeners) | 3,900 |
+| One catalog update that day (6 formulary chunks + par docs, once per device) | 2,100 |
+| Patients, drug-first (~40 reads per drug viewed, 75 views) | 3,000 |
+| Rule lookups (each query or write re-reads `users/{uid}`, and `config/app` or `catalog/locations` where needed; ~10 per open, ~3 per write) | 5,000 |
+| **Total** | **~41,000 of 50,000** |
+
+Writes stay under 2,000 a day (limit 20,000); storage is a few MB (limit 1 GB). What would break the budget: frequent "All drugs" patient lists (one read per patient each time), many re-imports of the formulary in one day, or far more than 100 daily users. Firebase console > Usage shows real numbers. The quota resets at midnight Pacific time (15:00 or 16:00 Malaysia time). If a limit is hit, reads fail until then; the app keeps working offline from the device cache and syncs after.
+
+## Backups
+
+Spark has no scheduled backups, and managed Firestore export needs the paid plan, so there are none in the cloud. The catalog (formulary, Item Mahal, Kuota, par) can always be re-seeded from the Google Sheets and PDFs. Movements and patient records exist only in Firestore. That is acceptable for a trial; before live use, move to the MOH account on a plan with backups, or add an Admin SDK export script run by hand.
+
+## Local development and tests
 
 ```
-node src/cli.js import-floorstock /path/to/pdfs docs/floorstock-unmatched.md
+npm test               # unit tests
+npm run test:rules     # rules, every role, Firestore emulator (needs Java 11+)
+npm run test:e2e       # headless Chrome against the Auth + Firestore emulators (needs Chrome; CHROME_PATH)
+npm run emulators      # in one terminal
+npm run seed:emulator -- --data /path/to/data
+npm run admin:emulator -- create-admin alvin
+npm run dev            # http://127.0.0.1:5055, talks to the emulators only
 ```
 
-Each import replaces that unit's par levels and never changes stock balances. One unit at a time: Admin > Import > Floor stock list, or `node src/cli.js import floorstock "Male Ward.pdf" --location male-ward --dry-run`. Keep the PDFs outside the repository folder.
-
-## Importing real patients (later, by an admin, after approval)
-
-Admin > Import > Patients accepts rows pasted from Google Sheets or Excel (with the header row), or a CSV file. Do it on the real server only. The command line `node src/cli.js import patients file.csv --dry-run` checks a file first. Never put patient files in the repository folder.
+On localhost the app always uses the emulators under a `demo-` project id, so local work can never touch the real project.

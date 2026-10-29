@@ -25,8 +25,9 @@ export function createDb(name, stores, version = 1) {
     },
     async put(store, value, key) {
       const tx = (await db()).transaction(store, 'readwrite');
-      tx.objectStore(store).put(value, key);
-      return done(tx);
+      const req = tx.objectStore(store).put(value, key);
+      await done(tx);
+      return req.result;
     },
     async del(store, key) {
       const tx = (await db()).transaction(store, 'readwrite');
@@ -43,21 +44,12 @@ export function createDb(name, stores, version = 1) {
       }
       return done(tx);
     },
-    async destroy() {
-      if (dbp) (await dbp).close();
-      dbp = null;
-      await new Promise((resolve) => {
-        const req = indexedDB.deleteDatabase(name);
-        req.onsuccess = req.onerror = req.onblocked = () => resolve();
-      });
-    },
   };
 }
 
-export const mainDb = createDb('fm-main', {
-  drugs: { keyPath: 'no_kod' }, mahal: { keyPath: 'no_kod' }, locations: { keyPath: 'id' }, balances: { keyPath: 'key' },
-  movements: { keyPath: 'id' }, outbox: { keyPath: 'n', autoIncrement: true }, rejected: { keyPath: 'id' }, meta: {},
-  par: { autoIncrement: true },
-}, 2);
-
-export const patientDb = createDb('fm-patients', { patients: { keyPath: 'id' } });
+// Our own device store. Holds the formulary, par levels and the outbox mirror; never patient data.
+// It survives sign-out on purpose: unsynced movements must not be lost when the Firestore cache is wiped.
+export const mainDb = createDb('fm-cloud', {
+  drugs: { keyPath: 'no_kod' }, par: { keyPath: 'location' }, outbox: { keyPath: 'n', autoIncrement: true },
+  rejected: { keyPath: 'id' }, meta: {},
+});

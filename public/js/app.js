@@ -1,7 +1,8 @@
 import { h, clear, icon } from './dom.js';
-import { state, subscribe, notify, can_, loadLocal, refresh, syncSoon, syncStatus, wipePatients, startNetworkWatch } from './store.js';
-import { get, post, onUnauthorized } from './api.js';
+import { state, subscribe, can_, loadLocal, syncSoon, syncStatus, startNetworkWatch, startLive, stopLive, flushBeforeSignOut, audit, saveSession } from './store.js';
 import { mainDb } from './idb.js';
+import { auth, db, wipeCache } from './fb.js';
+import { onAuthStateChanged, signOut as fbSignOut, doc, getDoc, updateDoc, serverTimestamp } from '/vendor/firebase.js';
 import { home } from './views/home.js';
 import { drug } from './views/drug.js';
 import { stock } from './views/stock.js';
@@ -81,34 +82,86 @@ function showLogin(message) {
   stopIdle();
   state.user = null;
   current = null;
-  clear(root, loginScreen({ message, onDone: (r) => begin(r.user, r.config) }));
+  clear(root, loginScreen({ message, onDone: () => { freshLogin = true; } }));
 }
 
-function forceChange(user) {
-  clear(root, h('div', { class: 'login' }, changePasswordForm({ forced: true, onDone: async () => { const me = await get('/api/me'); begin(me.user, me.config); } })));
+let freshLogin = false;
+
+const toUser = (uid, email, d) => ({
+  uid, email, username: d.username, display_name: d.name || d.username, role: d.role, location_id: d.location || null, must_change: !!d.must_change,
+});
+const usable = (d) => d && !d.disabled && ['admin', 'pharmacist', 'ward'].includes(d.role);
+
+function forceChange() {
+  clear(root, h('div', { class: 'login' }, changePasswordForm({ forced: true, username: state.user.username, onDone: async () => {
+    await updateDoc(doc(db(), `users/${state.user.uid}`), { must_change: false });
+    state.user.must_change = false;
+    await begin();
+  } })));
 }
 
-async function begin(user, config) {
-  state.user = user;
-  state.config = { ...state.config, ...config };
-  if (user.must_change) { forceChange(user); return; }
-  if (!started) { started = true; startNetworkWatch(); addEventListener('hashchange', route); subscribe(() => { if (state.user && shell) { paintChrome(); current?.update?.(); } }); }
+// Signed in with Firebase Auth. The users/{uid} document decides the role; without it the account gets nothing.
+async function enter(u) {
+  const session = await mainDb.get('meta', 'session');
+  let snap;
+  try { snap = await getDoc(doc(db(), `users/${u.uid}`)); } catch (e) {
+    return signOut(navigator.onLine ? `Could not load your account (${e.code || e.message}).` : 'You are offline and there is no recent session on this device.');
+  }
+  const d = snap.exists() ? snap.data() : null;
+  if (!usable(d)) return signOut('This account has no access. Ask the pharmacy administrator.');
+  const days = (await mainDb.get('meta', 'config'))?.offlineDays || state.config.offlineDays;
+  if (snap.metadata.fromCache && (!session || session.uid !== u.uid || Date.now() - session.lastOnlineAt > days * 86400000)) {
+    return signOut('Offline too long. Connect to the network and sign in again.');
+  }
+  state.user = toUser(u.uid, u.email, d);
+  state.lastOnlineAt = snap.metadata.fromCache ? session.lastOnlineAt : Date.now();
+  if (!snap.metadata.fromCache) {
+    await saveSession();
+    updateDoc(snap.ref, { last_login: serverTimestamp() }).catch(() => {});
+    if (freshLogin) audit('login');
+  }
+  if (state.user.must_change) { forceChange(); return; }
+  await begin();
+}
+
+// Role or location changes take effect on reload; disabling an account signs it out at once.
+function onUserChange(d) {
+  if (!state.user) return;
+  if (!usable(d)) { signOut('Your account was disabled.'); return; }
+  if (d.role !== state.user.role || (d.location || null) !== state.user.location_id) location.reload();
+}
+
+let routing = false;
+async function begin() {
+  if (!started) { started = true; startNetworkWatch(); subscribe(() => { if (state.user && shell) { paintChrome(); current?.update?.(); } }); }
   await loadLocal();
   buildShell();
+  clear(shell.main, h('div', { class: 'empty' }, state.drugs.length ? 'Loading' : 'Downloading the formulary'));
+  await startLive(onUserChange).catch((e) => console.warn('live:', e.code || e.message));
+  mainDb.put('meta', state.config, 'config').catch(() => {});
   startIdle();
-  const first = !state.drugs.length;
-  if (first) clear(shell.main, h('div', { class: 'empty' }, 'Downloading the formulary'));
-  try { await refresh(); } catch (e) { if (!e.offline) console.warn(e.message); }
   if (!location.hash) location.hash = '#/';
   route();
+  // Routing starts only now, so a tap during loading is not rendered twice and a half-filled form is never replaced.
+  if (!routing) { routing = true; addEventListener('hashchange', route); }
   syncSoon();
 }
 
+// Sign-out pushes pending writes (5 s at most), signs out of Firebase, then wipes the Firestore cache,
+// so no patient record stays on the device. Unsynced movements stay in our own outbox for the next sign-in.
+let signingOut = false;
 async function signOut(message) {
-  try { await post('/api/logout'); } catch { /* offline: server session expires on its own */ }
-  await wipePatients();
-  await mainDb.del('meta', 'session');
-  showLogin(typeof message === 'string' ? message : null);
+  if (signingOut) return;
+  signingOut = true;
+  stopIdle();
+  clear(root, h('div', { class: 'login' }, h('p', { class: 'sub' }, 'Signing out')));
+  try { if (state.user) await flushBeforeSignOut(); } catch { /* keep going */ }
+  stopLive();
+  await fbSignOut(auth).catch(() => {});
+  await wipeCache();
+  await mainDb.del('meta', 'session').catch(() => {});
+  if (typeof message === 'string') sessionStorage.setItem('fm-msg', message);
+  location.reload();
 }
 
 function startIdle() {
@@ -127,24 +180,18 @@ function stopIdle() {
   startIdle.reset = null;
 }
 
-async function boot() {
-  onUnauthorized(async () => { if (state.user) { await wipePatients(); showLogin('Your session ended. Please sign in again.'); } });
-  setInterval(async () => {
-    if (!state.user || navigator.onLine) return;
-    const s = await mainDb.get('meta', 'session');
-    if (s && Date.now() - s.lastOnlineAt > state.config.offlineDays * 86400000) signOut('Offline too long. Connect to the network and sign in again.');
+function boot() {
+  const message = sessionStorage.getItem('fm-msg');
+  sessionStorage.removeItem('fm-msg');
+  setInterval(() => {
+    if (state.user && !navigator.onLine && Date.now() - state.lastOnlineAt > state.config.offlineDays * 86400000) signOut('Offline too long. Connect to the network and sign in again.');
   }, 60000);
-  try {
-    const me = await get('/api/me');
-    await begin(me.user, me.config);
-  } catch (e) {
-    if (e.offline) {
-      const s = await mainDb.get('meta', 'session');
-      const cfg = (await mainDb.get('meta', 'config')) || state.config;
-      if (s && Date.now() - s.lastOnlineAt < cfg.offlineDays * 86400000) { state.online = false; await begin(s.user, cfg); return; }
-      showLogin('You are offline and there is no recent session on this device.');
-    } else showLogin();
-  }
+  let first = true;
+  onAuthStateChanged(auth, (u) => {
+    if (u && !state.user) enter(u).catch((e) => signOut(e.message));
+    else if (!u && (first || state.user)) { if (state.user) signOut(); else showLogin(message); }
+    first = false;
+  });
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

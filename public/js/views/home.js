@@ -1,5 +1,5 @@
 import { h, icon, clear, fmt } from '../dom.js';
-import { state, searchDrugs, totalFor } from '../store.js';
+import { state, searchDrugs, totalFor, balances } from '../store.js';
 import { stat, tile, chips } from '../ui.js';
 
 const RECENT = 'fm-recent-searches';
@@ -36,7 +36,7 @@ export function home() {
   const paintTiles = () => clear(tilesEl,
     tile('Ubat', fmt.n(state.drugs.filter((d) => d.kategori === 'Ubat').length)),
     tile('Ubat Mahal', fmt.n(state.mahal.size)),
-    tile('On hand lines', fmt.n([...state.base.values()].filter((v) => v > 0).length)));
+    tile('On hand lines', fmt.n([...balances().values()].filter((v) => v > 0).length)));
 
   input.addEventListener('input', () => { q = input.value; paint(); });
   const el = h('div', null,

@@ -1,5 +1,15 @@
 import { h, icon, clear } from '../dom.js';
-import { post } from '../api.js';
+import { auth, emailFor } from '../fb.js';
+import { signInWithEmailAndPassword, reauthenticateWithCredential, updatePassword, EmailAuthProvider } from '/vendor/firebase.js';
+import { passwordProblem } from '/shared/common-passwords.js';
+
+const AUTH_ERRORS = {
+  'auth/invalid-credential': 'Wrong username or password.', 'auth/wrong-password': 'Wrong username or password.', 'auth/user-not-found': 'Wrong username or password.',
+  'auth/invalid-email': 'Wrong username or password.', 'auth/user-disabled': 'This account is disabled.',
+  'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again.', 'auth/network-request-failed': 'No connection. This needs the network.',
+  'auth/weak-password': 'Password is too weak.', 'auth/requires-recent-login': 'Sign in again, then change the password.',
+};
+export const authMessage = (e) => AUTH_ERRORS[e.code] || e.message;
 
 const field = (label, node) => h('label', { class: 'field' }, h('span', null, label), node);
 
@@ -18,16 +28,17 @@ export function loginScreen({ message, onDone }) {
     e.preventDefault();
     go.disabled = true;
     try {
-      onDone(await post('/api/login', { username: un.value.trim(), password: pw.value }));
+      onDone();
+      await signInWithEmailAndPassword(auth, emailFor(un.value.trim()), pw.value);
     } catch (err) {
       pw.value = '';
-      clear(msg, h('div', { class: 'notice bad' }, err.offline ? 'No connection. Signing in needs the network.' : err.message));
+      clear(msg, h('div', { class: 'notice bad' }, authMessage(err)));
     } finally { go.disabled = false; }
   });
   return form;
 }
 
-export function changePasswordForm({ forced, onDone, onCancel }) {
+export function changePasswordForm({ forced, username = '', onDone, onCancel }) {
   const cur = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Current password' });
   const n1 = h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'New password' });
   const n2 = h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'Repeat new password' });
@@ -41,7 +52,14 @@ export function changePasswordForm({ forced, onDone, onCancel }) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (n1.value !== n2.value) { clear(msg, h('div', { class: 'notice bad' }, 'The two new passwords differ.')); return; }
-    try { await post('/api/password', { current: cur.value, next: n1.value }); onDone(); } catch (err) { clear(msg, h('div', { class: 'notice bad' }, err.offline ? 'Needs a connection.' : err.message)); }
+    const problem = passwordProblem(n1.value, username);
+    if (problem) { clear(msg, h('div', { class: 'notice bad' }, problem)); return; }
+    try {
+      const u = auth.currentUser;
+      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, cur.value));
+      await updatePassword(u, n1.value);
+      await onDone();
+    } catch (err) { clear(msg, h('div', { class: 'notice bad' }, authMessage(err))); }
   });
   return form;
 }

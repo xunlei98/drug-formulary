@@ -1,0 +1,219 @@
+rules_version = '2';
+
+// All server-side checks of the app live here. There are no Cloud Functions (Spark plan).
+// Roles come from users/{uid}: role (admin | pharmacist | ward), location, disabled.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function staff() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && me().get('disabled', false) != true
+        && me().get('role', '') in ['admin', 'pharmacist', 'ward'];
+    }
+    function isAdmin() { return staff() && me().role == 'admin'; }
+    function isPharm() { return staff() && me().role in ['admin', 'pharmacist']; }
+    function isWard() { return staff() && me().role == 'ward'; }
+    function cfg() { return get(/databases/$(database)/documents/config/app).data; }
+    function byId() { return get(/databases/$(database)/documents/catalog/locations).data.byId; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function str(v, max) { return v is string && v.size() <= max; }
+    function optStr(v, max) { return v == null || str(v, max); }
+    function isDate(v) { return v == null || (v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')); }
+
+    // App settings. Changed only in the Firebase console or with the Admin SDK.
+    match /config/{doc} {
+      allow read: if staff();
+      allow write: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow create, update: if isAdmin() && validUser(request.resource.data);
+      // A user may only clear their own forced-password-change flag and stamp their sign-in time.
+      allow update: if staff() && request.auth.uid == uid
+        && changed().hasOnly(['must_change', 'last_login'])
+        && (!('must_change' in changed()) || request.resource.data.must_change == false)
+        && (!('last_login' in changed()) || request.resource.data.last_login == request.time);
+      allow delete: if false;
+    }
+    function validUser(d) {
+      return d.keys().hasOnly(['username', 'email', 'name', 'role', 'location', 'disabled', 'must_change', 'last_login', 'created'])
+        && str(d.username, 60) && str(d.email, 120) && str(d.name, 120)
+        && d.disabled is bool && d.must_change is bool
+        && (!('role' in d) || d.role in ['admin', 'pharmacist', 'ward'])
+        && (!('role' in d) || d.disabled == true || d.role != 'ward' || d.location is string)
+        && optStr(d.get('location', null), 60);
+    }
+
+    // Formulary chunks, location list, version doc and par levels: read by all staff, written by admins.
+    match /formulary/{chunk} {
+      allow read: if staff();
+      allow write: if isAdmin();
+    }
+    match /meta/{doc} {
+      allow read: if staff();
+      allow write: if isAdmin();
+    }
+    match /par/{location} {
+      allow read: if staff();
+      allow write: if isAdmin();
+    }
+    match /catalog/{doc} {
+      allow read: if staff();
+      allow write: if isAdmin();
+      // Pharmacists edit Ubat Mahal quotas inside the one mahal document.
+      allow update: if doc == 'mahal' && isPharm() && changed().hasOnly(['items', 'updated'])
+        && request.resource.data.items.keys().hasAll(resource.data.items.keys())
+        && request.resource.data.items.diff(resource.data.items).affectedKeys().size() <= 1;
+    }
+
+    // Patient counts by drug, unit and kategori, so ward staff can see quota use without reading patients.
+    match /stats/{doc} {
+      allow read: if staff();
+      allow write: if isPharm();
+    }
+
+    // Stock ledger. Create-only. The client picks the id, so a retried offline write cannot duplicate.
+    match /movements/{id} {
+      allow read: if isPharm()
+        || (isWard() && (cfg().get('wardStockScope', 'own') == 'all' || me().get('location', '') in resource.data.locs));
+      allow create: if validMovement(id);
+      allow update, delete: if false;
+    }
+    function parentOf(loc) { return loc == null ? null : byId()[loc].get('parent_id', null); }
+    function knownLoc(loc) { return loc == null || (loc is string && loc in byId()); }
+    function validMovement(id) {
+      let d = request.resource.data;
+      return staff()
+        && d.keys().hasOnly(['drug', 'type', 'from', 'to', 'qty', 'note', 'uid', 'username', 'device_time', 'server_time', 'reverses', 'locs'])
+        && d.keys().hasAll(['drug', 'type', 'from', 'to', 'qty', 'note', 'uid', 'username', 'device_time', 'server_time', 'reverses', 'locs'])
+        && d.uid == request.auth.uid && d.username == me().username
+        && d.server_time == request.time
+        && str(d.drug, 40) && d.drug.size() > 0 && str(d.note, 300) && str(d.device_time, 40)
+        && d.qty is int && d.qty <= 10000000
+        && shapeOk(d)
+        && knownLoc(d.from) && knownLoc(d.to)
+        && locsOk(d)
+        && (!isWard() || me().get('location', '') in d.locs)
+        && (d.reverses == null || reversalOk(id, d));
+    }
+    function shapeOk(d) {
+      return (d.type == 'receive' && d.from == null && d.to is string && d.qty > 0)
+        || (d.type == 'issue' && d.from is string && d.to == null && d.qty > 0)
+        || (d.type == 'transfer' && d.from is string && d.to is string && d.from != d.to && d.qty > 0)
+        || (d.type == 'adjust' && d.qty > 0 && ((d.from is string && d.to == null) || (d.from == null && d.to is string)))
+        || (d.type == 'stocktake' && d.from == null && d.to is string && d.qty >= 0);
+    }
+    // locs lists the locations a movement touches plus their parents, so a ward sees its shelves.
+    function locsOk(d) {
+      let want = [d.from, d.to, parentOf(d.from), parentOf(d.to)].toSet().difference([null].toSet());
+      return d.locs is list && d.locs.size() <= 4 && d.locs.toSet() == want;
+    }
+    function reversalOk(id, d) {
+      let orig = get(/databases/$(database)/documents/movements/$(d.reverses)).data;
+      let inverse = { 'receive': 'issue', 'issue': 'receive', 'transfer': 'transfer', 'adjust': 'adjust' };
+      return d.reverses is string
+        && existsAfter(/databases/$(database)/documents/reversals/$(d.reverses))
+        && getAfter(/databases/$(database)/documents/reversals/$(d.reverses)).data.by == id
+        && orig.type in inverse && inverse[orig.type] == d.type
+        && orig.drug == d.drug && orig.qty == d.qty && orig.from == d.to && orig.to == d.from;
+    }
+
+    // One undo per movement: this marker can only be created once, in the same batch as the reversal.
+    match /reversals/{origId} {
+      allow read: if staff();
+      allow create: if staff()
+        && request.resource.data.keys().hasOnly(['by', 'uid'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.by is string
+        && !exists(/databases/$(database)/documents/movements/$(request.resource.data.by))
+        && existsAfter(/databases/$(database)/documents/movements/$(request.resource.data.by))
+        && getAfter(/databases/$(database)/documents/movements/$(request.resource.data.by)).data.reverses == origId;
+      allow update, delete: if false;
+    }
+
+    // Opening balances so devices do not re-read the whole ledger. Only moves forward in time.
+    match /checkpoints/{location} {
+      allow read: if staff();
+      allow create, update: if isPharm()
+        && request.resource.data.keys().hasOnly(['asOf', 'balances', 'uid'])
+        && request.resource.data.asOf is timestamp && request.resource.data.asOf <= request.time
+        && request.resource.data.balances is map && request.resource.data.uid == request.auth.uid
+        && (resource == null || request.resource.data.asOf > resource.data.asOf);
+      allow delete: if false;
+    }
+
+    // A pharmacist marks a negative balance as checked. Nothing is ever blocked by a negative balance.
+    match /reviews/{id} {
+      allow read: if staff();
+      allow create, update: if isPharm()
+        && request.resource.data.keys().hasOnly(['drug', 'location', 'qty', 'note', 'uid', 'username', 'at'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time
+        && str(request.resource.data.note, 300) && request.resource.data.qty is int;
+      allow delete: if false;
+    }
+
+    // Minimal patient record: the only patient data that may be cached on a device.
+    match /patients/{id} {
+      allow read: if isPharm();
+      allow create: if isPharm() && validPatient(request.resource.data);
+      allow update: if isPharm() && validPatient(request.resource.data)
+        && (isAdmin() || canMove(resource.data.kategori, request.resource.data.kategori));
+      allow delete: if false;
+    }
+    function canMove(a, b) {
+      let allowed = {
+        'Waiting List': ['Active', 'Active - Pesara', 'Off'],
+        'Active': ['Active - Pesara', 'Off', 'Defaulted'],
+        'Active - Pesara': ['Active', 'Off', 'Defaulted'],
+        'Off': ['Waiting List', 'Active'],
+        'Defaulted': ['Waiting List', 'Active', 'Off']
+      };
+      return a == b || b in allowed[a];
+    }
+    function validPatient(d) {
+      return d.keys().hasOnly(['no_kod', 'initials', 'ic4', 'kategori', 'unit', 'preskriber', 'tarikh_mula', 'tarikh_henti', 'tarikh_kemaskini', 'updated_by'])
+        && d.no_kod is string && d.no_kod in get(/databases/$(database)/documents/catalog/mahal).data.items
+        && str(d.initials, 4) && d.ic4 is string && d.ic4.matches('^[0-9]{0,4}$')
+        && d.kategori in ['Waiting List', 'Active', 'Active - Pesara', 'Off', 'Defaulted']
+        && d.unit in ['', 'Medical', 'Psychiatry', 'O&G', 'Oncology', 'Surgical', 'Ophthalmology', 'Dermatology', 'Peadiatric']
+        && str(d.preskriber, 120)
+        && isDate(d.tarikh_mula) && isDate(d.tarikh_henti) && isDate(d.tarikh_kemaskini)
+        && (!(d.kategori in ['Off', 'Defaulted']) || d.tarikh_henti is string);
+    }
+
+    // Name and IC. The app reads these online only, over REST, so they never enter the device cache.
+    // Only DEMO PATIENT names and 000000-00-xxxx ICs are accepted unless config/app.patientsRealAllowed is true.
+    match /patient_identity/{id} {
+      allow read: if isPharm();
+      allow create, update: if isPharm() && validIdentity(request.resource.data);
+      allow delete: if false;
+    }
+    function validIdentity(d) {
+      return d.keys().hasOnly(['no_kod', 'nama', 'ic', 'dos', 'kuantiti_setahun', 'nota', 'key_id'])
+        && str(d.no_kod, 40) && str(d.nama, 120) && d.nama.size() > 0 && str(d.ic, 20)
+        && str(d.dos, 200) && str(d.nota, 300)
+        && (cfg().get('patientsRealAllowed', false) == true
+          || (d.nama.matches('^DEMO PATIENT [0-9]+$') && d.ic.matches('^000000-00-[0-9]{4}$')));
+    }
+
+    match /patient_log/{id} {
+      allow read: if isPharm();
+      allow create: if isPharm()
+        && request.resource.data.keys().hasOnly(['patient_id', 'uid', 'username', 'action', 'from', 'to', 'detail', 'ts'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.ts == request.time;
+      allow update, delete: if false;
+    }
+
+    match /audit/{id} {
+      allow read: if isAdmin();
+      allow create: if staff()
+        && request.resource.data.keys().hasOnly(['uid', 'username', 'action', 'target', 'detail', 'ts'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.ts == request.time
+        && str(request.resource.data.action, 60) && optStr(request.resource.data.target, 120) && optStr(request.resource.data.detail, 500);
+      allow update, delete: if false;
+    }
+  }
+}

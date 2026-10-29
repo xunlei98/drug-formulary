@@ -1,80 +1,53 @@
 # Hospital Limbang Drug Formulary
 
-A staff-only app to look up drugs, watch Ubat Mahal quotas and patients, and log stock movements. It runs in the browser on iPhone, Android and PC. It keeps working with no internet and syncs when the connection returns.
+A staff-only app to look up drugs, watch Ubat Mahal quotas and patients, and log stock movements. It runs in the browser on iPhone, Android and PC, keeps working with no internet, and syncs when the connection returns.
+
+It is hosted on Firebase on the free Spark plan: Hosting for the app, Firestore for data, Firebase Auth for sign-in. There is no server code; `firestore.rules` enforces every permission.
 
 ![Drug detail](docs/screens/03-drug-detail.png)
 
-More pictures are in `docs/screens/`.
+## Quick start (local, emulators only)
 
-## What you need
-
-- A PC or server with Node 20 installed (nodejs.org, the LTS 20 version).
-- This folder.
-
-## Start it
-
-Open a terminal in this folder and run:
+Needs Node 20, Java 11+ (for the emulators) and Chrome (for e2e tests).
 
 ```
 npm install
-npm run seed
-npm start
+npm run emulators                                   # terminal 1
+npm run seed:emulator -- --data /path/to/data       # terminal 2: formulary, quotas, locations, par, DEMO patients
+npm run admin:emulator -- create-admin alvin        # prints a temporary password once
+npm run dev                                         # open http://127.0.0.1:5055
 ```
 
-`npm run seed` loads the drug list and quotas from the CSV files in `data/` (`master.csv`, `item-mahal.csv`, `kuota.csv`). It also makes the first admin account and prints a temporary password once. Write it down. You must change it at first sign-in.
-
-Then open http://localhost:3000 in a browser.
-
-To put the app on a phone, you need HTTPS. Read `docs/deploy.md` first.
-
-## Try it with fake data
-
-```
-DB_PATH=data/demo.db DEMO_PASSWORD='pick-a-password-12' npm run demo
-DB_PATH=data/demo.db npm start
-```
-
-Sign in as `admin`, `demo.pharm` or `demo.ward` with that password. The patients are all fake ("DEMO PATIENT 001"). Never use the demo database for real work.
+On localhost the app only talks to the emulators. Deploying and seeding the real project: `docs/deploy.md`.
 
 ## Who can do what
 
 | Role | Can do |
 | --- | --- |
 | admin | Everything. Adds staff, edits locations, imports data, reads the audit log. |
-| pharmacist | Edits drugs and quotas, logs stock, sees and edits patients. |
-| ward | Searches drugs, sees quota counts and stock, logs movements for their ward. Sees no patients. |
+| pharmacist | Edits quotas, logs stock, sees and edits patients. |
+| ward | Searches drugs, sees quota counts and stock, logs movements for their own ward. Sees no patients. |
 
-There is no self sign-up. An admin creates each account.
+No self sign-up. An admin creates each account in Admin > Users.
 
 ## Using the app
 
-- **Search**: find a drug by name, code or brand. Tap it for stock, quota and recent movements.
-- **Log**: record Receive, Transfer, Issue, Adjust or Stocktake. Works offline. A badge shows Synced, Pending, Offline or Needs attention.
-- **Quota**: slots left for each Ubat Mahal drug. Green is fine, amber is near the limit, full and over are red.
-- **Patients** (admin and pharmacist): patients on each Ubat Mahal drug. The IC is hidden until you tap it. Every tap is recorded.
+- **Search**: find a drug by name, code or brand. Tap it for stock, par, quota and recent movements.
+- **Log**: Receive, Transfer, Issue, Adjust or Stocktake. Works offline. The badge shows Synced, Pending, Offline or Needs attention.
+- **Quota**: slots left for each Ubat Mahal drug. Green is fine, amber from 80 percent, full and over are red.
+- **Patients** (admin and pharmacist): choose a drug to list its patients. The IC is hidden until you tap it, and every tap is audited. Trial project: DEMO patients only.
 - **Admin**: Users, Locations, Import and Audit.
-
-The Hospital Limbang stores and wards are preset. Floor stock par levels come from each unit's PDF: Admin > Import > Floor stock list (see docs/deploy.md).
-
-## Updating the drug list
-
-Admin > Import. Paste the rows from the Google Sheet with the header row, or choose a CSV file. Use "Dry run" first to see what would change.
-
-## Backups
-
-Run `npm run backup`. See `docs/deploy.md` to schedule it every night.
 
 ## Tests
 
 ```
-npm test
-npm run test:e2e
+npm test            # unit tests
+npm run test:rules  # security rules for admin, pharmacist, ward, disabled and signed-out users
+npm run test:e2e    # headless Chrome against the emulators
 ```
-
-The second needs Google Chrome. Set `CHROME_PATH` if it is not at `/usr/bin/google-chrome`.
 
 ## More
 
-- `docs/domain.md`: how the data is shaped.
+- `docs/deploy.md`: deploy, seed, credentials, read budget, moving to the MOH account.
+- `docs/domain.md`: data shapes.
 - `docs/security.md`: what is stored where, and the risks.
-- `docs/deploy.md`: hosting, HTTPS, backups, settings.

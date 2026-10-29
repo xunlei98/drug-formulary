@@ -1,8 +1,3 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-
 // Parses `pdftotext -layout` output of the "Senarai Floor Stock 2026" PDFs and matches rows to the formulary.
 
 const LISTS = [
@@ -12,7 +7,6 @@ const LISTS = [
   [/Recovery Bay/i, 'recovery'],
   [/Floor Stock/i, 'floor'],
 ];
-export const LIST_LABEL = { floor: 'Floor stock', dda: 'Psychotropic & DDA', aoh: 'After office hours', trolley: 'Emergency trolley', recovery: 'Recovery bay' };
 
 const FULL = /^\s{0,6}(\d{1,3})\s{2,}(\S.*?)\s{2,}([A-Za-z][A-Za-z]{0,11})(?:\s{2,}(\d[\d,]*))?(?:\s{2,}(\S.*))?$/;
 const BARE = /^\s{0,6}(\d{1,3})\s{2,}([A-Za-z][A-Za-z]{0,11})(?:\s{2,}(\d[\d,]*))?(?:\s{2,}(\S.*))?$/;
@@ -119,19 +113,4 @@ export function buildIndex(drugs) {
 export function suggest(name, drugs, n = 2) {
   const t = tokens(name);
   return drugs.map((d) => ({ d, s: dice(t, tokens(d.perihal)) })).sort((a, b) => b.s - a.s).slice(0, n).filter((x) => x.s > 0.3).map((x) => x.d);
-}
-
-// Server-side PDF to text. Needs poppler-utils (pdftotext) on the host.
-export function pdfToText(buffer) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'floorstock-'));
-  try {
-    const file = path.join(dir, 'list.pdf');
-    fs.writeFileSync(file, buffer);
-    return execFileSync('pdftotext', ['-layout', file, '-'], { encoding: 'utf8', timeout: 20000, maxBuffer: 8_000_000, stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch (e) {
-    if (e.code === 'ENOENT') throw new Error('pdftotext is not installed on the server. Install poppler-utils, or paste the PDF text instead.');
-    throw new Error('Could not read that PDF.');
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
 }
