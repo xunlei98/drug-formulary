@@ -1,8 +1,11 @@
 const WORD = /[a-z0-9]+/g;
 
 export function indexDrug(d) {
-  const text = [d.perihal, d.brand, d.kod_phis, d.no_kod].join(' ').toLowerCase();
-  return { drug: d, text, words: text.match(WORD) || [], name: (d.perihal || '').toLowerCase() };
+  const i = d.info || {};
+  const text = [d.perihal, d.brand, d.kod_phis, d.no_kod, i.brand, i.item_code, i.pharm_cat].join(' ').toLowerCase();
+  // Indications only match on exact letters and score below a name, brand or class hit.
+  const extra = String(i.indications || '').toLowerCase();
+  return { drug: d, text, extra, words: text.match(WORD) || [], name: (d.perihal || '').toLowerCase() };
 }
 
 function distance(a, b) {
@@ -22,6 +25,7 @@ function tokenScore(t, entry) {
     const wordStart = at === 0 || !/[a-z0-9]/.test(entry.text[at - 1]);
     return (wordStart ? 100 : 60) - Math.min(at, 40) / 4;
   }
+  if (t.length >= 3 && entry.extra && entry.extra.includes(t)) return 25;
   if (t.length < 4) return 0;
   const allow = t.length >= 7 ? 2 : 1;
   let best = 9;

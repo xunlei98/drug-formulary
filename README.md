@@ -32,7 +32,7 @@ No self sign-up. An admin creates each account in Admin > Users.
 
 ## Using the app
 
-- **Search**: find a drug by name, code or brand. Tap it for stock, par, quota and recent movements.
+- **Search**: find a drug by name, code, brand, class or indication. Results show as a card gallery (packaging photo, brand, class, prescriber category, indication, dosage, code, procurement) or a compact list. Tap a drug for its information (indications, dosage, dilution, renal, pregnancy, breastfeeding, supply and price), then stock, par, quota and recent movements.
 - **Kad Stok**: each drug at each location has a stock card laid out like the pink paper card (Tarikh, No. PK/BTB/BPSS/BPSI/BPIN, Terima Daripada / Keluar Kepada, Terimaan, Keluaran, Baki, Nama Pegawai). Open it from a drug's stock rows. On a phone the table scrolls sideways with Tarikh pinned. See [docs/domain.md](docs/domain.md#kad-stok-stock-card-view).
 - **Log** (Isi Kad Stok): fill one card row in card order: Tarikh, document, Terimaan / Keluaran / Kiraan stok, from or to (a location, a typed name, or Pelarasan stok), Kuantiti, optional Seunit (RM). Works offline. The badge shows Synced, Pending, Offline or Needs attention.
 - **Quota**: slots left for each Ubat Mahal drug. Green is fine, amber from 80 percent, full and over are red.

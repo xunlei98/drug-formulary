@@ -1,12 +1,14 @@
 // Seeds a Firebase project (or the emulators) with the trial data:
 // the formulary, Item Mahal, Kuota by unit, the 19 Hospital Limbang locations, floor stock par levels and DEMO patients.
 //   node scripts/seed-cloud.js --data <dir> [--project <id>] [--yes] [--patients <csv>]
-// <dir> holds master.csv, item-mahal.csv, kuota.csv and floorstock/<Ward name>.pdf|.txt (exported from the sheets).
+// <dir> holds master.csv, item-mahal.csv, kuota.csv and floorstock/<Ward name>.pdf|.txt (exported from the sheets),
+// and optionally drug-formulary.csv (the old DRUG FORMULARY tab) for indications, dosage and supply details.
 // Patients are always fake DEMO rows. A Pesakit CSV is refused unless PATIENTS_REAL_ALLOWED=true (see docs/deploy.md).
 import fs from 'node:fs';
 import path from 'node:path';
 import { init, arg, EMULATOR } from './admin-init.js';
 import { pdfToText } from './pdftotext.js';
+import { parseInfoSheet, matchInfo, mergeInfo } from '../public/shared/druginfo.js';
 import { importMaster, importItemMahal, importKuotaUnit, importPatients, importFloorStock, chunkDrugs, defaultLocations, demoPatients, WARDS } from '../public/shared/importers.js';
 
 const REAL_ALLOWED = process.env.PATIENTS_REAL_ALLOWED === 'true';
@@ -20,6 +22,14 @@ console.log(`Seeding ${EMULATOR ? 'emulator' : 'Firebase'} project ${id}`);
 
 const m = importMaster(read('master.csv'));
 say('Formulary', m.result);
+let formulary = m.drugs;
+if (fs.existsSync(path.join(dir, 'drug-formulary.csv'))) {
+  const rows = parseInfoSheet(read('drug-formulary.csv'));
+  const mi = matchInfo(rows, formulary);
+  const r = mergeInfo(formulary, mi, rows);
+  formulary = r.drugs;
+  console.log(`Drug info: ${mi.matched.size} matched, ${r.added.length} added, ${mi.ambiguous.length} ambiguous, ${mi.unmatched.length - r.added.length} left out`);
+}
 const im = importItemMahal(read('item-mahal.csv'), { drugs: m.drugs });
 say('Item Mahal', im.result);
 const ku = importKuotaUnit(read('kuota.csv'), { mahal: im.mahal });
@@ -54,7 +64,7 @@ const writes = [
   ['catalog/locations', { byId: locations }, false],
   ['catalog/mahal', { items: Object.fromEntries(ku.mahal), updated: FieldValue.serverTimestamp() }, false],
 ];
-const chunks = chunkDrugs(m.drugs);
+const chunks = chunkDrugs(formulary);
 chunks.forEach((items, i) => writes.push([`formulary/c${String(i).padStart(3, '0')}`, { items }, false]));
 for (const [loc, rows] of Object.entries(par)) writes.push([`par/${loc}`, { rows, updated: FieldValue.serverTimestamp() }, false]);
 const byKey = {};

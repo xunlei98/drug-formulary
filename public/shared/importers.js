@@ -24,8 +24,9 @@ export function importMaster(text, { drugs = new Map() } = {}) {
     if (row.no_kod.includes('/')) { err(r, x.line, 'No Kod must not contain "/"'); continue; }
     if (!['Ubat', 'Bukan Ubat'].includes(row.kategori)) { err(r, x.line, `Kategori must be Ubat or Bukan Ubat, got "${row.kategori}"`); continue; }
     if (NUMBERS.some((k) => Number.isNaN(row[k]))) { err(r, x.line, 'A number column is not a number'); continue; }
-    if (out.has(row.no_kod)) r.updated++; else r.added++;
-    out.set(row.no_kod, row);
+    const prev = out.get(row.no_kod);
+    if (prev) r.updated++; else r.added++;
+    out.set(row.no_kod, prev?.info ? { ...row, info: prev.info } : row);
   }
   return { result: r, drugs: out };
 }

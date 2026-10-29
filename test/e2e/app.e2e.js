@@ -10,6 +10,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { startStatic } from '../../scripts/serve-local.js';
 import { importMaster, importItemMahal, chunkDrugs, defaultLocations, demoPatients } from '../../public/shared/importers.js';
+import { parseInfoSheet, matchInfo, mergeInfo } from '../../public/shared/druginfo.js';
 
 const PROJECT = 'demo-limbang-formulary';
 const CHROME = process.env.CHROME_PATH || ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].find((p) => fs.existsSync(p));
@@ -21,6 +22,10 @@ let server, browser, db, auth;
 const MASTER = `Kategori,Kod PhIS,No Kod,Perihal Stok,Brand,Jenis Perolehan Stok,Kumpulan,PKU,SKU
 Ubat,P1,D1,Demo Drug One 10mg Tablet,Demobrand,LP,Tablet,pack,tab
 Ubat,P2,D2,Demo Drug Two,,LP,Tablet,pack,tab`;
+
+const INFO = `Item,Brand,Form,Prescriber Category,Pharmacologic Category,Indications,Dosage,PhIS Code,Item Code,Procurement,Price Per Pack (RM)
+Demo Drug One 10 mg Tablet,Demobrand,Tablet / Capsule,A*,Demo class,"Demo indication line one
+Demo indication line two",10 mg OD,P1,D1,APPL,12.5`;
 
 async function addUser(username, role, location = null) {
   const email = `${username}@staff.formulary.local`;
@@ -38,7 +43,8 @@ before(async () => {
   db = getFirestore(app);
   auth = getAuth(app);
 
-  const { drugs } = importMaster(MASTER);
+  const info = parseInfoSheet(INFO);
+  const { drugs } = mergeInfo(importMaster(MASTER).drugs, matchInfo(info, importMaster(MASTER).drugs), info);
   const { mahal } = importItemMahal('ID,No Kod,Kuota,Tarikh Kemaskini,Nota\nr1,D1,6,04/08/2022', { drugs });
   const b = db.batch();
   chunkDrugs(drugs).forEach((items, i) => b.set(db.doc(`formulary/c00${i}`), { items }));
@@ -92,6 +98,26 @@ test('login and search the formulary', async () => {
   await page.locator('.topbar').waitFor();
   await page.fill('input[type=search]', 'demobrand');
   await page.getByText('Demo Drug One 10mg Tablet').first().waitFor();
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('drug info: gallery card, then the detail page shows Indications and Dosage', async () => {
+  const { context, page, problems } = await open('ward.etd');
+  await page.locator('.topbar').waitFor();
+  await page.fill('input[type=search]', 'demo drug one');
+  const card = page.locator('a.dcard').filter({ hasText: 'Demo Drug One 10mg Tablet' });
+  await card.getByText('A*').waitFor();
+  await card.click();
+  const row = (label) => page.locator('.prow').filter({ has: page.locator('.pl', { hasText: new RegExp(`^${label}$`) }) }).locator('.pv');
+  assert.equal(await row('Indications').innerText(), 'Demo indication line one\nDemo indication line two');
+  assert.equal(await row('Dosage').innerText(), '10 mg OD');
+  assert.equal(await row('Dilution').innerText(), 'Empty');
+  assert.equal(await row('Price Per Pack').innerText(), 'RM 12.50');
+  await page.getByText('Stock vs par by location').waitFor();
+  await page.goto(BASE + '/#/');
+  await page.getByRole('button', { name: 'List' }).click();
+  await page.locator('a.item').filter({ hasText: 'Demo Drug One 10mg Tablet' }).waitFor();
   assert.deepEqual(problems, []);
   await context.close();
 });

@@ -3,11 +3,7 @@ import { state, can_, parLines, totalFor, movementsFor, quotaSummary, unitSummar
 import { stat, statusPill, quotaBar, tape, locName, moveLine, toast } from '../ui.js';
 import { inverseOf } from '/shared/ledger.js';
 import { parPill, parMeta } from './stock.js';
-
-const FIELDS = [
-  ['Kategori', 'kategori'], ['Kod PhIS', 'kod_phis', 'mono'], ['No Kod', 'no_kod', 'mono'], ['Brand', 'brand'], ['Jenis Perolehan Stok', 'jenis'], ['Kumpulan', 'kumpulan'],
-  ['PKU', 'pku'], ['SKU', 'sku'], ['Harga PKU', 'harga_pku', 'money'], ['Yearly', 'yearly', 'n'], ['Monthly', 'monthly', 'n'], ['Min', 'min', 'n'], ['Max', 'max', 'n'], ['Buffer', 'buffer', 'n'],
-];
+import { drugHeader } from '../drugui.js';
 
 export function drug({ id }) {
   const kod = decodeURIComponent(id);
@@ -65,11 +61,7 @@ export function drug({ id }) {
           canUndo && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Undo this movement', onClick: () => undo(m) }, icon('undo')));
       }) : h('li', { class: 'empty' }, 'No movements yet.')));
 
-    const details = h('section', { class: 'card card-pad' }, h('p', { class: 'label' }, 'Details'),
-      h('div', { class: 'kv' }, FIELDS.map(([label, key, kind]) => h('div', { class: key === 'brand' ? 'full' : '' }, h('div', { class: 'label' }, label),
-        h('div', { class: `v ${kind === 'mono' ? 'mono' : ''}` }, kind === 'n' ? fmt.n(d[key]) : kind === 'money' ? fmt.money(d[key]) : d[key] || '-')))));
-
-    clear(body, featured, unitCard, stockCard, moveCard, q && can_('quota.edit') ? quotaEditor(kod, q) : null, details);
+    clear(body, featured, unitCard, stockCard, moveCard, q && can_('quota.edit') ? quotaEditor(kod, q) : null);
   };
 
   async function undo(m) {
@@ -80,7 +72,7 @@ export function drug({ id }) {
   }
 
   paint();
-  return { el: h('div', null, h('a', { class: 'btn ghost', href: '#/' }, icon('back'), 'Search'), h('div', { class: 'section' }), body), title: d.no_kod, update: paint };
+  return { el: h('div', null, h('a', { class: 'btn ghost', href: '#/' }, icon('back'), 'Search'), h('div', { class: 'section' }), drugHeader(d), body), title: d.no_kod, update: paint };
 }
 
 function quotaEditor(kod, q) {

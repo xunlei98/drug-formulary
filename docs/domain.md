@@ -18,6 +18,10 @@ Natural key is `no_kod`. It is unique in the MASTER sheet.
 
 `kategori` (Ubat or Bukan Ubat), `kod_phis`, `no_kod`, `perihal` (Perihal Stok), `brand`, `jenis` (APPL, LP or CC), `kumpulan`, `pku`, `sku`, `harga_pku`, `yearly`, `monthly`, `min`, `max`, `buffer`.
 
+Optional `info` (drug information from the old "DRUG FORMULARY" Google Sheet, columns C to X; every key optional, empty cells omitted, line breaks kept): `brand`, `form`, `pack_img`, `img`, `pharm_cat`, `prescriber_cat`, `pregnancy`, `breastfeeding`, `indications`, `dosage`, `renal`, `dilution`, `origin`, `phis`, `item_code`, `procurement`, `packaging`, `sku`, `price_pack` (number), `price_unit` (number), `group`, `keep_buffer` (boolean). Merged by `scripts/merge-druginfo.js` (or the seed, when `drug-formulary.csv` sits in the data folder). A sheet row matches a drug by Item Code = `no_kod`, then by Item Code or PhIS code against `no_kod`/`kod_phis`, then by exact normalised name. Rows that hit more than one drug, or that compete for one drug at the same tier, are reported as ambiguous and not applied. A MASTER re-import keeps `info`. Screens show the MASTER value first and the sheet value when MASTER is empty. The sheet has no Administration or Hepatic Dosage column.
+
+Drugs added from the sheet alone (code-bearing rows with no similar drug name) carry `source: 'old-formulary-sheet'` and show an "Old formulary only" pill.
+
 Derived: `is_ubat_mahal` is true when a `mahal_item` row exists. `quota` comes from that row.
 
 ## Location
