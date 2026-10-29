@@ -72,15 +72,25 @@ async function poll(fn, ms = 20000) {
 const before = new Set((await smokeMoves()).map((m) => m.id));
 await check('ward logs a test receive of 1 at Male Ward; it reaches the server and shows Synced', async () => {
   await w.evaluate((d) => { location.hash = `#/log?drug=${encodeURIComponent(d)}`; }, DRUG);
-  await w.locator('select[aria-label=To]').waitFor();
-  assert.equal(await w.locator('select[aria-label=To]').inputValue(), 'male-ward');
-  await w.fill('input[aria-label=Quantity]', '1');
-  await w.fill('input[aria-label=Note]', NOTE);
-  await w.getByRole('button', { name: 'Save movement' }).click();
+  await w.locator('select[aria-label="Lokasi kad"]').waitFor();
+  assert.equal(await w.locator('select[aria-label="Lokasi kad"]').inputValue(), 'male-ward');
+  await w.selectOption('select[aria-label="Jenis dokumen"]', 'LAIN');
+  await w.fill('input[aria-label="No. dokumen"]', 'SMOKE');
+  await w.selectOption('select[aria-label="Terima Daripada / Keluar Kepada"]', 'text');
+  await w.fill('input[aria-label^="Nama"]', 'Ujian smoke');
+  await w.fill('input[aria-label=Kuantiti]', '1');
+  await w.fill('input[aria-label=Catatan]', NOTE);
+  await w.getByRole('button', { name: 'Simpan baris' }).click();
   const now = await poll(async () => { const n = (await smokeMoves()).filter((m) => !before.has(m.id)); return n.length ? n : null; });
   assert.equal(now.length, 1, 'one new movement on the server');
   assert.deepEqual([now[0].type, now[0].to, now[0].qty, now[0].username, now[0].note], ['receive', 'male-ward', 1, wardUser, NOTE]);
+  assert.deepEqual([now[0].doc_type, now[0].doc_no, now[0].party], ['LAIN', 'SMOKE', 'Ujian smoke']);
   await w.locator('a.badge').filter({ hasText: 'Synced' }).waitFor({ timeout: 20000 });
+  // Saving opens the Kad Stok: the new row is the last one, with the ward user as Nama Pegawai.
+  const last = w.locator('table.kad tbody tr').last();
+  await last.filter({ hasText: 'SMOKE' }).waitFor({ timeout: 15000 });
+  assert.match(await last.innerText(), /Ujian smoke[\s\S]*demo\.ward/);
+  await w.locator('table.kad tr.bf').getByText('Baki dibawa ke hadapan').waitFor();
 });
 // Undoes every smoke-test movement still shown with an Undo button (also any left over from an earlier failed run).
 await check('ward undoes the test movement(s) in the app; reversals on the server; Male Ward net change is 0', async () => {

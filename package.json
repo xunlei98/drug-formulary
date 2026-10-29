@@ -14,7 +14,8 @@
     "deploy": "firebase deploy --only firestore:rules,firestore:indexes,hosting --project ${FIREBASE_PROJECT:-default}",
     "seed:cloud": "node scripts/seed-cloud.js",
     "cloud:admin": "node scripts/cloud-admin.js",
-    "dev": "npm run build && node scripts/serve-local.js"
+    "dev": "npm run build && node scripts/serve-local.js",
+    "screens": "npm run build && firebase emulators:exec --only auth,firestore --project demo-limbang-formulary \"node scripts/screens-kad.js\""
   },
   "keywords": [],
   "author": "",

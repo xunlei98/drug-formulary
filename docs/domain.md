@@ -64,6 +64,40 @@ Immutability and reversal:
 Ward scoping:
 - A ward user has one `location`. With `config/app.wardStockScope = 'own'` (default) they see and log only movements whose `locs` contain their ward. `all` lets them see every location.
 
+## Kad Stok (stock card view)
+
+The movement log looks and fills like the pink paper card (KEW.PS, M.S. 7/13, Bahagian B, Transaksi Stok). One card is one drug at one location: `#/kad/<no_kod>?loc=<location>`. It is a view over the ledger above, so it costs no extra Firestore reads.
+
+Optional card fields on a movement (all may be missing; older movements have none):
+
+| field | meaning | rule |
+| --- | --- | --- |
+| `tarikh` | Tarikh on the card, `YYYY-MM-DD` | defaults to today in the form; rows are still ordered by `server_time` |
+| `doc_type` | `PK`, `BTB`, `BPSS`, `BPSI`, `BPIN` or `LAIN` (Lain-lain) | enum |
+| `doc_no` | document number | string, 40 chars max |
+| `party` | free-text Terima Daripada / Keluar Kepada (supplier, patient, other hospital) | string, 120 chars max |
+| `unit_price` | Seunit (RM), entered on Terimaan | number from 0 to 1,000,000 |
+
+How a card row maps onto a movement:
+
+| On the card | Movement |
+| --- | --- |
+| Terimaan from a location | `transfer`, from that location |
+| Terimaan from a typed name | `receive` + `party` |
+| Keluaran to a location | `transfer`, to that location |
+| Keluaran to a typed name | `issue` + `party` |
+| Terima Daripada / Keluar Kepada = Pelarasan stok | `adjust` |
+| Kiraan stok | `stocktake`: Baki becomes the count, the difference shows under Terimaan or Keluaran |
+
+Columns:
+- Baki dibawa ke hadapan: the checkpoint balance, or the balance before the first row shown when older rows are hidden (20 rows a page, newest last).
+- Baki: the running balance after each row. Negative is red and flagged, never blocked.
+- RM: Jumlah = Kuantiti × Seunit. Seunit is the row's `unit_price`. Keluaran and Baki use the last Seunit seen on the card. With no price, the column shows `-`. Harga PKU is per pack, so it is only shown as a hint and never used as Seunit.
+- Nama Pegawai: the `username` of whoever saved the row (the signed-in user).
+- A reversal shows as `Batal: <party of the cancelled row>`.
+
+Code: `public/shared/kad.js` (`cardRows`, `pageOf`, `entryToMovement`, `validateCardFields`), views `kad.js` and `log.js`. Rules: `cardOk()` in `firestore.rules`.
+
 ## Ubat Mahal quota
 
 `catalog/mahal.items[no_kod] = { quota, nota, tarikh_kemaskini, units }`. `quota` is the number of patients the hospital may have on that drug (confirmed). It may be empty (12 rows in the real sheet). Then the drug is monitored but shows "quota not set".

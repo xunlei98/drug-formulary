@@ -33,7 +33,8 @@ No self sign-up. An admin creates each account in Admin > Users.
 ## Using the app
 
 - **Search**: find a drug by name, code or brand. Tap it for stock, par, quota and recent movements.
-- **Log**: Receive, Transfer, Issue, Adjust or Stocktake. Works offline. The badge shows Synced, Pending, Offline or Needs attention.
+- **Kad Stok**: each drug at each location has a stock card laid out like the pink paper card (Tarikh, No. PK/BTB/BPSS/BPSI/BPIN, Terima Daripada / Keluar Kepada, Terimaan, Keluaran, Baki, Nama Pegawai). Open it from a drug's stock rows. On a phone the table scrolls sideways with Tarikh pinned. See [docs/domain.md](docs/domain.md#kad-stok-stock-card-view).
+- **Log** (Isi Kad Stok): fill one card row in card order: Tarikh, document, Terimaan / Keluaran / Kiraan stok, from or to (a location, a typed name, or Pelarasan stok), Kuantiti, optional Seunit (RM). Works offline. The badge shows Synced, Pending, Offline or Needs attention.
 - **Quota**: slots left for each Ubat Mahal drug. Green is fine, amber from 80 percent, full and over are red.
 - **Patients** (admin and pharmacist): choose a drug to list its patients. The IC is hidden until you tap it, and every tap is audited. Trial project: DEMO patients only.
 - **Admin**: Users, Locations, Import and Audit.
@@ -44,6 +45,7 @@ No self sign-up. An admin creates each account in Admin > Users.
 npm test            # unit tests
 npm run test:rules  # security rules for admin, pharmacist, ward, disabled and signed-out users
 npm run test:e2e    # headless Chrome against the emulators
+npm run screens     # Kad Stok screenshots (docs/screens/12-14) on the emulators, synthetic data
 ```
 
 ## More

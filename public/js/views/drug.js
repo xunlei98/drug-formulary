@@ -46,14 +46,15 @@ export function drug({ id }) {
         h('tbody', null, units.map((u) => h('tr', null, h('td', null, u.unit), h('td', { class: 'mono' }, u.used), h('td', { class: 'mono' }, u.quota ?? '-'), h('td', null, statusPill(u)))))))) : null;
 
     const stockCard = h('section', { class: 'card' }, h('p', { class: 'label card-pad' }, 'Stock vs par by location'),
-      h('ul', { class: 'list' }, stock.length ? stock.map((s) => h('li', { class: 'item' },
+      h('ul', { class: 'list' }, stock.length ? stock.map((s) => h('li', null, h('a', { class: 'item', href: `#/kad/${encodeURIComponent(kod)}?loc=${encodeURIComponent(s.location)}`, 'aria-label': `Kad Stok ${s.name}` },
         h('div', { class: 'grow' }, h('div', { class: 'name' }, s.name), h('div', { class: 'meta' }, s.par ? `Par ${fmt.n(s.par)} · ${parMeta(s)}` : 'No par level')),
         h('div', { class: 'par' }, h('span', { class: 'qty mono' }, s.qty === undefined ? '–' : fmt.n(s.qty)), s.par ? h('span', { class: 'meta mono' }, `/ ${fmt.n(s.par)}`) : null),
-        parPill(s.status)))
+        parPill(s.status), icon('chevron'))))
         : h('li', { class: 'empty' }, 'No stock recorded and no par level.')));
 
     const moveCard = h('section', { class: 'card' },
-      h('div', { class: 'card-pad stack' }, h('p', { class: 'label' }, 'Recent movements'), moves.length > 1 ? tape(moves) : null),
+      h('div', { class: 'card-pad stack' }, h('div', { class: 'row-between' }, h('p', { class: 'label' }, 'Recent movements'),
+        h('a', { class: 'btn ghost', href: `#/kad/${encodeURIComponent(kod)}` }, 'Kad Stok')), moves.length > 1 ? tape(moves) : null),
       h('ul', { class: 'list' }, moves.length ? moves.slice(0, 12).map((m) => {
         const l = moveLine(m);
         const canUndo = !m.pending && !m.reverses && !undone.has(m.id) && can_('stock.log') && m.type !== 'stocktake' && m.type !== 'adjust';

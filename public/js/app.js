@@ -7,6 +7,7 @@ import { home } from './views/home.js';
 import { drug } from './views/drug.js';
 import { stock } from './views/stock.js';
 import { log } from './views/log.js';
+import { kad } from './views/kad.js';
 import { quota } from './views/quota.js';
 import { patients, patient, newPatient } from './views/patients.js';
 import { syncView, review } from './views/sync.js';
@@ -21,7 +22,7 @@ let idleTimer = null;
 let started = false;
 
 const ROUTES = [
-  [/^$|^home$/, home], [/^drug\/(.+)$/, drug, ['id']], [/^stock$/, stock], [/^log$/, log], [/^quota$/, quota],
+  [/^$|^home$/, home], [/^drug\/(.+)$/, drug, ['id']], [/^stock$/, stock], [/^log$/, log], [/^kad\/(.+)$/, kad, ['id'], 'stock.view'], [/^quota$/, quota],
   [/^patients$/, patients, [], 'patient.view'], [/^patient\/new$/, newPatient, [], 'patient.edit'], [/^patient\/(.+)$/, patient, ['id'], 'patient.view'],
   [/^sync$/, syncView], [/^review$/, review, [], 'stock.review'], [/^more$/, more], [/^admin$/, admin, [], 'user.manage'],
 ];
@@ -47,6 +48,7 @@ function route() {
     params.onLogout = signOut;
     current = view(params, query);
     shell.title.textContent = current.title;
+    shell.main.classList.toggle('wide', !!current.wide);
     clear(shell.main, current.el);
     shell.main.focus({ preventScroll: true });
     scrollTo(0, 0);

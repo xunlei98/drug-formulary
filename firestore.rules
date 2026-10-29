@@ -87,17 +87,25 @@ service cloud.firestore {
     function validMovement(id) {
       let d = request.resource.data;
       return staff()
-        && d.keys().hasOnly(['drug', 'type', 'from', 'to', 'qty', 'note', 'uid', 'username', 'device_time', 'server_time', 'reverses', 'locs'])
+        && d.keys().hasOnly(['drug', 'type', 'from', 'to', 'qty', 'note', 'uid', 'username', 'device_time', 'server_time', 'reverses', 'locs',
+                             'tarikh', 'doc_type', 'doc_no', 'party', 'unit_price'])
         && d.keys().hasAll(['drug', 'type', 'from', 'to', 'qty', 'note', 'uid', 'username', 'device_time', 'server_time', 'reverses', 'locs'])
         && d.uid == request.auth.uid && d.username == me().username
         && d.server_time == request.time
         && str(d.drug, 40) && d.drug.size() > 0 && str(d.note, 300) && str(d.device_time, 40)
         && d.qty is int && d.qty <= 10000000
-        && shapeOk(d)
+        && shapeOk(d) && cardOk(d)
         && knownLoc(d.from) && knownLoc(d.to)
         && locsOk(d)
         && (!isWard() || me().get('location', '') in d.locs)
         && (d.reverses == null || reversalOk(id, d));
+    }
+    // Optional Kad Stok fields (KEW.PS Bahagian B). Movements written before they existed have none.
+    function cardOk(d) {
+      return isDate(d.get('tarikh', null))
+        && d.get('doc_type', null) in [null, 'PK', 'BTB', 'BPSS', 'BPSI', 'BPIN', 'LAIN']
+        && optStr(d.get('doc_no', null), 40) && optStr(d.get('party', null), 120)
+        && (d.get('unit_price', null) == null || (d.unit_price is number && d.unit_price >= 0 && d.unit_price <= 1000000));
     }
     function shapeOk(d) {
       return (d.type == 'receive' && d.from == null && d.to is string && d.qty > 0)

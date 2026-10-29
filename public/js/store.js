@@ -7,6 +7,7 @@ import {
   onSnapshot, serverTimestamp, increment, Timestamp, FieldPath, waitForPendingWrites,
 } from '/vendor/firebase.js';
 import { applyMovement, keyOf } from '/shared/ledger.js';
+import { cardRows } from '/shared/kad.js';
 import { summarize, byUnit } from '/shared/quota.js';
 import { indexDrug, search as fuzzy } from '/shared/search.js';
 import { can, subtree } from '/shared/perm.js';
@@ -224,6 +225,14 @@ export function movementsFor(noKod, limit = 30) {
   return [...pending.reverse(), ...state.movements.filter((m) => m.drug === noKod)].slice(0, limit);
 }
 
+// One drug's Kad Stok at one location, oldest row first. Opening balance is the checkpoint, so no extra reads.
+export function cardFor(drug, loc) {
+  const pending = pendingMovements().map((o) => ({ ...o.movement, id: o.id, username: state.user.username, server_time: o.created, pending: true }));
+  const ms = [...state.movements].reverse().concat(pending);
+  const name = (id) => state.locMap.get(id)?.name || id;
+  return { ...cardRows(ms, { drug, loc, opening: state.base.get(keyOf(drug, loc)) || 0, name }), asOf: tsIso(state.asOf) };
+}
+
 export function undoneIds() {
   return new Set([...state.movements.map((m) => m.reverses), ...pendingFor().map((o) => o.movement?.reverses)].filter(Boolean));
 }
@@ -283,11 +292,16 @@ async function reloadOutbox() {
 const parentOf = (id) => state.locMap.get(id)?.parent_id || null;
 const locsOf = (m) => [...new Set([m.from, m.to, parentOf(m.from), parentOf(m.to)].filter(Boolean))];
 
+// Kad Stok fields are written only when set, so the doc stays identical to the old shape otherwise.
+const CARD_FIELDS = ['tarikh', 'doc_type', 'doc_no', 'party', 'unit_price'];
+const cardFields = (m) => Object.fromEntries(CARD_FIELDS.filter((k) => m[k] != null && m[k] !== '').map((k) => [k, m[k]]));
+
 function movementDoc(o) {
   const m = o.movement;
   return {
     drug: m.drug, type: m.type, from: m.from || null, to: m.to || null, qty: m.qty, note: m.note || '',
     uid: o.uid, username: o.user, device_time: m.device_time, server_time: serverTimestamp(), reverses: m.reverses || null, locs: locsOf(m),
+    ...cardFields(m),
   };
 }
 

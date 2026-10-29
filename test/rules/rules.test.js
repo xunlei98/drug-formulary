@@ -124,6 +124,19 @@ test('movements are create-only and validated', async () => {
   await assertFails(setDoc(doc(db, 'movements/m-ph-0009'), { ...mv('pharm'), extra: 1 }));
 });
 
+test('Kad Stok fields are optional and type-checked; old-shape movements still pass', async () => {
+  const db = as('pharm');
+  const card = { tarikh: '2026-10-29', doc_type: 'BPSI', doc_no: 'S-123', party: 'Pharmaniaga', unit_price: 1.25 };
+  await assertSucceeds(setDoc(doc(db, 'movements/m-kad-0001'), mv('pharm', card)));
+  await assertSucceeds(setDoc(doc(db, 'movements/m-kad-0002'), mv('pharm', { type: 'receive', from: null, locs: ['male-ward'], doc_type: 'PK', unit_price: 2 })));
+  await assertSucceeds(setDoc(doc(as('ward'), 'movements/m-kad-0003'), mv('ward', { doc_type: 'LAIN', party: null })));
+  await assertSucceeds(setDoc(doc(db, 'movements/m-kad-0004'), mv('pharm')), 'old shape, no card fields');
+  for (const [i, bad] of [{ tarikh: '29/10/2026' }, { doc_type: 'XX' }, { doc_no: 'x'.repeat(41) }, { party: 'x'.repeat(121) },
+    { unit_price: -1 }, { unit_price: '1.20' }, { unit_price: 2000000 }, { doc_no: 5 }, { surprise: 1 }].entries()) {
+    await assertFails(setDoc(doc(db, `movements/m-kad-bad-${i}`), mv('pharm', bad)));
+  }
+});
+
 test('an undo must be the exact inverse, written with its marker, and only once', async () => {
   const db = as('ward');
   const undo = mv('ward', { from: 'male-ward', to: 'main-store', reverses: 'old1', locs: ['male-ward', 'main-store'] });
