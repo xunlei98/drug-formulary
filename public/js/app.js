@@ -18,7 +18,6 @@ import { loginScreen, changePasswordForm } from './views/login.js';
 const root = document.getElementById('app');
 let current = null;
 let shell = null;
-let idleTimer = null;
 let started = false;
 
 const ROUTES = [
@@ -81,7 +80,6 @@ function buildShell() {
 }
 
 function showLogin(message) {
-  stopIdle();
   state.user = null;
   current = null;
   clear(root, loginScreen({ message, onDone: () => { freshLogin = true; } }));
@@ -111,9 +109,9 @@ async function enter(u) {
   }
   const d = snap.exists() ? snap.data() : null;
   if (!usable(d)) return signOut('This account has no access. Ask the pharmacy administrator.');
-  const days = (await mainDb.get('meta', 'config'))?.offlineDays || state.config.offlineDays;
-  if (snap.metadata.fromCache && (!session || session.uid !== u.uid || Date.now() - session.lastOnlineAt > days * 86400000)) {
-    return signOut('Offline too long. Connect to the network and sign in again.');
+  // Stay signed in until the user taps Sign out: no idle lock, no offline time limit.
+  if (snap.metadata.fromCache && (!session || session.uid !== u.uid)) {
+    return signOut('Connect to the network and sign in again.');
   }
   state.user = toUser(u.uid, u.email, d);
   state.lastOnlineAt = snap.metadata.fromCache ? session.lastOnlineAt : Date.now();
@@ -141,7 +139,6 @@ async function begin() {
   clear(shell.main, h('div', { class: 'empty' }, state.drugs.length ? 'Loading' : 'Downloading the formulary'));
   await startLive(onUserChange).catch((e) => console.warn('live:', e.code || e.message));
   mainDb.put('meta', state.config, 'config').catch(() => {});
-  startIdle();
   if (!location.hash) location.hash = '#/';
   route();
   // Routing starts only now, so a tap during loading is not rendered twice and a half-filled form is never replaced.
@@ -155,7 +152,6 @@ let signingOut = false;
 async function signOut(message) {
   if (signingOut) return;
   signingOut = true;
-  stopIdle();
   clear(root, h('div', { class: 'login' }, h('p', { class: 'sub' }, 'Signing out')));
   try { if (state.user) await flushBeforeSignOut(); } catch { /* keep going */ }
   stopLive();
@@ -166,28 +162,9 @@ async function signOut(message) {
   location.reload();
 }
 
-function startIdle() {
-  stopIdle();
-  if (!can_('patient.view')) return;
-  const limit = (state.config.idleLockMin || 5) * 60000;
-  const reset = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => signOut('Signed out after being idle.'), limit); };
-  for (const ev of ['pointerdown', 'keydown', 'scroll']) addEventListener(ev, reset, { passive: true });
-  reset();
-  startIdle.reset = reset;
-}
-
-function stopIdle() {
-  clearTimeout(idleTimer);
-  if (startIdle.reset) for (const ev of ['pointerdown', 'keydown', 'scroll']) removeEventListener(ev, startIdle.reset);
-  startIdle.reset = null;
-}
-
 function boot() {
   const message = sessionStorage.getItem('fm-msg');
   sessionStorage.removeItem('fm-msg');
-  setInterval(() => {
-    if (state.user && !navigator.onLine && Date.now() - state.lastOnlineAt > state.config.offlineDays * 86400000) signOut('Offline too long. Connect to the network and sign in again.');
-  }, 60000);
   let first = true;
   onAuthStateChanged(auth, (u) => {
     if (u && !state.user) enter(u).catch((e) => signOut(e.message));

@@ -22,6 +22,6 @@ export function more({ onLogout }) {
         if (pending && !confirm(`${pending} movement(s) are still waiting to sync on this device. They stay saved, but only sync when you sign in again. Sign out anyway?`)) return;
         onLogout();
       } }, icon('out'), 'Sign out')),
-    h('p', { class: 'sub' }, can_('patient.view') ? 'Patient records you open are cached as initials and last 4 digits of IC only. Names and full IC are never stored. Signing out or idle lock wipes the cache.' : 'No patient data is kept on this device.'));
+    h('p', { class: 'sub' }, can_('patient.view') ? 'Patient records you open are cached as initials and last 4 digits of IC only. Names and full IC are never stored. Signing out wipes the cache.' : 'No patient data is kept on this device.'));
   return { el, title: 'Account' };
 }
