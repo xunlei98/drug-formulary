@@ -12,6 +12,7 @@ import { summarize, byUnit } from '/shared/quota.js';
 import { indexDrug, search as fuzzy } from '/shared/search.js';
 import { can, subtree } from '/shared/perm.js';
 import { groupPar, parStatus } from '/shared/par.js';
+import { isOldFormularyOnly } from '/shared/druginfo.js';
 import { uuid } from './dom.js';
 
 export const CHECKPOINT_EVERY = 100;
@@ -55,9 +56,10 @@ export async function loadLocal() {
 }
 
 function setDrugs(drugs) {
-  state.drugs = drugs;
-  state.drugMap = new Map(drugs.map((d) => [d.no_kod, d]));
-  state.index = drugs.map(indexDrug);
+  const current = drugs.filter((d) => !isOldFormularyOnly(d));
+  state.drugs = current;
+  state.drugMap = new Map(current.map((d) => [d.no_kod, d]));
+  state.index = current.map(indexDrug);
 }
 function setPar(docs) {
   state.par = groupPar(docs.flatMap((d) => d.rows.filter((r) => r.drug).map((r) => ({ ...r, location: d.location }))));
@@ -95,7 +97,7 @@ async function syncCatalog(meta) {
   const v = state.versions;
   if (meta.formulary != null && meta.formulary !== v.formulary) {
     const snap = await getDocs(collection(db(), 'formulary'));
-    const drugs = snap.docs.flatMap((d) => d.data().items || []);
+    const drugs = snap.docs.flatMap((d) => d.data().items || []).filter((d) => !isOldFormularyOnly(d));
     await mainDb.replaceAll({ drugs });
     setDrugs(drugs);
     v.formulary = meta.formulary;

@@ -1,4 +1,4 @@
-// Drug cards and the Notion-style property list, built from drugView() (MASTER first, old sheet second).
+// Drug cards and the property list, built from drugView() (MASTER first, Notion second).
 import { h, fmt } from './dom.js';
 import { drugView, prescriberTone, procurementTone } from '/shared/druginfo.js';
 
@@ -24,7 +24,7 @@ export function drugCard(d, extra) {
       v.prescriber_cat && h('div', null, pill(v.prescriber_cat, prescriberTone(v.prescriber_cat), true)),
       line(v.indications), line(v.dosage),
       line(v.phis || d.no_kod, 'mono'),
-      h('div', { class: 'pills' }, pill(v.procurement, procurementTone(v.procurement)), v.old_sheet_only && pill('Old formulary only', 's-none'), extra)));
+      h('div', { class: 'pills' }, pill(v.procurement, procurementTone(v.procurement)), extra)));
 }
 
 const text = (s) => (s == null || s === '' ? null : String(s));
@@ -35,10 +35,13 @@ const CLINICAL = [
   ['Prescriber Category', (v) => pill(v.prescriber_cat, prescriberTone(v.prescriber_cat), true)],
   ['Indications', (v) => text(v.indications), true],
   ['Dosage', (v) => text(v.dosage), true],
+  ['Administration', (v) => text(v.administration), true],
   ['Dilution', (v) => text(v.dilution), true],
   ['Renal Dosage Adjustment', (v) => text(v.renal), true],
+  ['Hepatic Dosage Adjustment', (v) => text(v.hepatic), true],
   ['Pregnancy', (v) => text(v.pregnancy), true],
   ['Breastfeeding', (v) => text(v.breastfeeding), true],
+  ['Remark', (v) => text(v.remark), true],
 ];
 const num = (n) => (n == null ? null : fmt.n(n));
 const money = (n) => (n == null ? null : fmt.money(n));
@@ -52,6 +55,7 @@ const SUPPLY = [
   ['SKU', (v) => text(v.sku)],
   ['Price Per Pack', (v) => money(v.price_pack)],
   ['Price Per Unit', (v) => money(v.price_unit)],
+  ['Quota form', (v) => (v.quota_url ? h('a', { href: v.quota_url, target: '_blank', rel: 'noopener noreferrer' }, 'Ubat Mahal form') : null)],
   ['Keep Buffer', (v) => (v.keep_buffer == null ? null : v.keep_buffer ? 'Yes' : 'No')],
   ['Source of Origin', (v) => text(v.origin)],
   ['Yearly', (v, d) => num(d.yearly)], ['Monthly', (v, d) => num(d.monthly)],
@@ -80,7 +84,6 @@ export function drugHeader(d) {
   return h('div', { class: 'dhead' },
     pics.length ? h('div', { class: 'dpics' }, pics.map((u) => photo(u.replace(/=w400$/, '=w600'), 'ph-head'))) : null,
     h('h2', { class: 'dtitle' }, d.perihal),
-    v.old_sheet_only && h('p', null, h('span', { class: 'pill s-near' }, 'Old formulary only · not in current stock list')),
     h('div', { class: 'props', 'aria-label': 'Drug information' }, rows(CLINICAL, v, d),
       h('p', { class: 'label psec' }, 'Supply'), rows(SUPPLY, v, d)),
     pics.length ? h('p', { class: 'sub' }, DISCLAIMER) : null);

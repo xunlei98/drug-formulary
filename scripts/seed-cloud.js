@@ -2,13 +2,13 @@
 // the formulary, Item Mahal, Kuota by unit, the 19 Hospital Limbang locations, floor stock par levels and DEMO patients.
 //   node scripts/seed-cloud.js --data <dir> [--project <id>] [--yes] [--patients <csv>]
 // <dir> holds master.csv, item-mahal.csv, kuota.csv and floorstock/<Ward name>.pdf|.txt (exported from the sheets),
-// and optionally drug-formulary.csv (the old DRUG FORMULARY tab) for indications, dosage and supply details.
+// and optionally notion/drugs.json plus notion/places.json for indications, dosage and kept-at lists.
 // Patients are always fake DEMO rows. A Pesakit CSV is refused unless PATIENTS_REAL_ALLOWED=true (see docs/deploy.md).
 import fs from 'node:fs';
 import path from 'node:path';
 import { init, arg, EMULATOR } from './admin-init.js';
 import { pdfToText } from './pdftotext.js';
-import { parseInfoSheet, matchInfo, mergeInfo } from '../public/shared/druginfo.js';
+import { mergeNotion } from '../public/shared/notioninfo.js';
 import { importMaster, importItemMahal, importKuotaUnit, importPatients, importFloorStock, chunkDrugs, defaultLocations, demoPatients, WARDS } from '../public/shared/importers.js';
 
 const REAL_ALLOWED = process.env.PATIENTS_REAL_ALLOWED === 'true';
@@ -23,12 +23,12 @@ console.log(`Seeding ${EMULATOR ? 'emulator' : 'Firebase'} project ${id}`);
 const m = importMaster(read('master.csv'));
 say('Formulary', m.result);
 let formulary = m.drugs;
-if (fs.existsSync(path.join(dir, 'drug-formulary.csv'))) {
-  const rows = parseInfoSheet(read('drug-formulary.csv'));
-  const mi = matchInfo(rows, formulary);
-  const r = mergeInfo(formulary, mi, rows);
+const notionDrugs = path.join(dir, 'notion', 'drugs.json');
+const notionPlaces = path.join(dir, 'notion', 'places.json');
+if (fs.existsSync(notionDrugs) && fs.existsSync(notionPlaces)) {
+  const r = mergeNotion(formulary, JSON.parse(fs.readFileSync(notionDrugs, 'utf8')), JSON.parse(fs.readFileSync(notionPlaces, 'utf8')));
   formulary = r.drugs;
-  console.log(`Drug info: ${mi.matched.size} matched, ${r.added.length} added, ${mi.ambiguous.length} ambiguous, ${mi.unmatched.length - r.added.length} left out`);
+  console.log(`Notion: ${r.matched.size} matched, ${r.unmatched.length} not added, ${r.ambiguous.length} ambiguous, ${r.keptDrugs} with a kept-at list, ${r.removed.length} old-sheet-only drugs removed`);
 }
 const im = importItemMahal(read('item-mahal.csv'), { drugs: m.drugs });
 say('Item Mahal', im.result);

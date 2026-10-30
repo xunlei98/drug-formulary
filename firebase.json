@@ -21,7 +21,7 @@
         ]
       },
       {
-        "source": "/@(fonts|icons)/**",
+        "source": "/@(fonts|icons|drugs)/**",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
       }
     ]

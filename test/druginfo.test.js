@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseInfoSheet, matchInfo, mergeInfo, imageUrl, drugView, prescriberTone } from '../public/shared/druginfo.js';
+import { parseInfoSheet, matchInfo, mergeInfo, imageUrl, pictureUrl, photoJobs, drugView, prescriberTone } from '../public/shared/druginfo.js';
 import { importMaster } from '../public/shared/importers.js';
 import { indexDrug, search } from '../public/shared/search.js';
 
@@ -39,15 +39,30 @@ test('matchInfo: item code, then PhIS code, then exact name; ties are reported, 
   assert.deepEqual(m.unmatched.map((u) => u.item), ['Brand New Drug 5 mg Tablet', 'No Code Drug Tablet']);
   assert.deepEqual(m.noSheet.sort(), ['Y1', 'Z9']);
 
-  const { drugs: out, added } = mergeInfo(drugs, m, rows);
-  assert.deepEqual(added, ['NEW01']);
-  assert.equal(out.get('NEW01').source, 'old-formulary-sheet');
+  const { drugs: out, added, removed } = mergeInfo(drugs, m);
+  assert.deepEqual(added, []);
+  assert.deepEqual(removed, []);
+  assert.equal(out.has('NEW01'), false);
   assert.equal(out.get('X1').info.item_code, 'P01XX.01');
   assert.equal(out.get('Z9').info, undefined);
   // Re-running on the merged formulary changes nothing.
-  const again = mergeInfo(out, matchInfo(rows, out), rows);
+  const again = mergeInfo(out, matchInfo(rows, out));
   assert.deepEqual(again.added, []);
+  assert.deepEqual(again.removed, []);
   assert.deepEqual(JSON.stringify([...again.drugs]), JSON.stringify([...out]));
+});
+
+test('a drug that exists only on the old sheet is left out, and so is an unmatched sheet row', () => {
+  const drugs = new Map([drug('A1', 'Kept Drug'), ['OLD1', { no_kod: 'OLD1', perihal: 'Ranitidine 150mg Tablet', source: 'old-formulary-sheet' }]]);
+  const rows = parseInfoSheet(sheet(
+    { item: 'Kept Drug', code: 'A1', ind: 'Kept indication' },
+    { item: 'Ranitidine 150 mg Tablet', code: 'OLD1' },
+    { item: 'Brand New Drug 5 mg Tablet', code: 'NEW01' }));
+  const { drugs: out, removed } = mergeInfo(drugs, matchInfo(rows, drugs));
+  assert.deepEqual(removed, ['OLD1']);
+  assert.equal(out.has('OLD1'), false);
+  assert.equal(out.has('NEW01'), false);
+  assert.equal(out.get('A1').info.indications, 'Kept indication');
 });
 
 test('a sheet row whose name looks like an existing drug is not added as a new drug', () => {
@@ -55,7 +70,7 @@ test('a sheet row whose name looks like an existing drug is not added as a new d
   const rows = parseInfoSheet(sheet({ item: 'Clindamycin Phosphate 150 mg/ml Injection', code: 'J01FF01162P3001XX' }));
   const m = matchInfo(rows, drugs);
   assert.equal(m.unmatched[0].suggest.drug, 'A1');
-  assert.deepEqual(mergeInfo(drugs, m, rows).added, []);
+  assert.deepEqual(mergeInfo(drugs, m).added, []);
 });
 
 test('a MASTER re-import keeps the drug info', () => {
@@ -72,6 +87,18 @@ test('imageUrl turns Drive links into thumbnails and drops what the app cannot l
   assert.equal(imageUrl('DRUG FORMULARY_Images/x.jpg'), null);
   assert.equal(imageUrl('http://i.imgur.com/a.jpg'), null);
   assert.equal(imageUrl(''), null);
+});
+
+test('a hosted photo replaces the remote link; an AppSheet path stays empty', () => {
+  const photos = { 'A/1': { pack: true } };
+  assert.equal(pictureUrl('A/1', 'https://i.imgur.com/XXASYdZ.jpg', 'pack', photos), '/drugs/A%2F1-pack.webp');
+  assert.equal(pictureUrl('A/1', 'https://i.imgur.com/XXASYdZ.jpg', 'img', photos), 'https://i.imgur.com/XXASYdZ.jpg');
+  assert.equal(pictureUrl('B1', 'DRUG FORMULARY_Images/x.jpg', 'pack', photos), null);
+  const jobs = photoJobs([
+    { no_kod: 'B1', info: { pack_img: 'https://drive.google.com/file/d/abc123/view', img: 'DRUG FORMULARY_Images/x.jpg' } },
+    { no_kod: 'OLD', source: 'old-formulary-sheet', info: { img: 'https://i.imgur.com/XXASYdZ.jpg' } },
+  ]);
+  assert.deepEqual(jobs, [{ no_kod: 'B1', kind: 'pack', src: 'https://lh3.googleusercontent.com/d/abc123=w800', file: 'B1-pack.webp' }]);
 });
 
 test('drugView prefers MASTER values and falls back to the sheet', () => {

@@ -15,7 +15,9 @@
     "seed:cloud": "node scripts/seed-cloud.js",
     "cloud:admin": "node scripts/cloud-admin.js",
     "dev": "npm run build && node scripts/serve-local.js",
-    "screens": "npm run build && firebase emulators:exec --only auth,firestore --project demo-limbang-formulary \"node scripts/screens-kad.js\""
+    "screens": "npm run build && firebase emulators:exec --only auth,firestore --project demo-limbang-formulary \"node scripts/screens-kad.js\"",
+    "photos": "node scripts/host-drug-photos.js",
+    "notion:merge": "node scripts/merge-notion.js"
   },
   "keywords": [],
   "author": "",
@@ -29,6 +31,7 @@
     "firebase": "^12.19.0",
     "firebase-admin": "^13.10.0",
     "firebase-tools": "^15.34.2",
-    "playwright-core": "^1.64.1"
+    "playwright-core": "^1.64.1",
+    "sharp": "^0.35.5"
   }
 }

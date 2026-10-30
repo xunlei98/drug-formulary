@@ -7,6 +7,9 @@ backups/
 test-results/
 public/vendor/
 public/sw.js
+# Each hospital's own pictures and photo index. Not part of the shared app.
+public/drugs/
+public/shared/drug-photos.local.js
 firebase-debug.log
 firestore-debug.log
 ui-debug.log

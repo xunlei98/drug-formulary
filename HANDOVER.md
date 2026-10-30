@@ -30,12 +30,12 @@ This is a staff-only drug formulary PWA (an installable web app) for Hospital Li
 - `firebase login` is needed once on a new machine before deploying.
 
 ## Open questions waiting for Alvin
-1. 13 sheet rows match more than one drug and 16 match only by similar name. These weren't applied (see the merge report from 29 Oct).
-2. Should any of the 69 "Old formulary only" drugs be removed (for example, ranitidine)?
-3. Where the sheet and the MASTER list disagree, the app shows MASTER. Is that right?
-4. Is a separate store role wanted?
-5. Drug pictures: 179 drugs have Drive/imgur links, 6 are AppSheet-only, and none work offline. Should compressed copies be hosted in Firebase Hosting?
-6. Should the Administration and Hepatic Dosage fields be pulled from Notion?
+1. Superseded 30 Oct 2026: do not import the old Google Sheet. Clinical text comes from the Notion formulary.
+2. Decided 30 Oct 2026: the 69 "Old formulary only" drugs stay out. Sheet rows that match no MASTER drug are not added. Any already stored with `source: 'old-formulary-sheet'` are dropped on the next merge and hidden in the app.
+3. Superseded 30 Oct 2026: the app shows MASTER for brand, price, SKU and packaging, and Notion when MASTER is empty. Clinical text (indications, dosage, administration, hepatic, and the rest of the Notion columns) comes from Notion.
+4. Decided 30 Oct 2026: no separate store role. Store stock belongs to the pharmacist role. Main Store, Prepacking and the substores stay locations.
+5. Decided 30 Oct 2026: compressed copies are hosted on Firebase Hosting under `public/drugs/`. The 6 AppSheet-only pictures have no file to copy, so they stay as the grey icon.
+6. Decided 30 Oct 2026: Administration, Hepatic Dosage and the rest of the Notion clinical columns are shown. Notion has no contraindication column. The drug page also lists where the drug is kept (floor stock, after office hours, emergency trolley, DDA). Kad Stok stays.
 
 ## Later
 Once the trial is accepted, ask JKNS ICT for work-account GCP access and move the project to the work account.

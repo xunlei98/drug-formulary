@@ -3,8 +3,8 @@ const WORD = /[a-z0-9]+/g;
 export function indexDrug(d) {
   const i = d.info || {};
   const text = [d.perihal, d.brand, d.kod_phis, d.no_kod, i.brand, i.item_code, i.pharm_cat].join(' ').toLowerCase();
-  // Indications only match on exact letters and score below a name, brand or class hit.
-  const extra = String(i.indications || '').toLowerCase();
+  // Clinical text matches on exact letters and scores below a name, brand or class hit.
+  const extra = [i.indications, i.administration, i.hepatic].filter(Boolean).join('\n').toLowerCase();
   return { drug: d, text, extra, words: text.match(WORD) || [], name: (d.perihal || '').toLowerCase() };
 }
 

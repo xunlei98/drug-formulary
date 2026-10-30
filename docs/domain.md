@@ -7,8 +7,10 @@ This file is the source of truth for the data shapes. Code follows it.
 | Role | Can do |
 | --- | --- |
 | admin | Everything a pharmacist can, plus users, locations, imports, audit log. These are the Drug Information Centre pharmacists. |
-| pharmacist | Edit drugs and quotas, log stock, see and edit patients. |
-| ward | View drug info, quota counts, stock and locations. Log movements. Never sees patients. |
+| pharmacist | Edit drugs and quotas, log stock, see and edit patients. This includes the stores (Main Store, Prepacking, Substore OPD, Substore IPD). |
+| ward | View drug info, quota counts, stock and locations. Log movements for their own ward. Never sees patients. |
+
+There is no store role. A store is a location, not an account type.
 
 The client uses the table in `public/shared/perm.js` only to hide buttons. `firestore.rules` enforces the same roles on every read and write. Roles live in `users/{uid}` (`role`, `location`, `disabled`). Admins change other users' roles in Admin > Users. An admin can never change their own role or disable themselves (rules enforce it), so the last admin cannot be removed.
 
@@ -18,9 +20,11 @@ Natural key is `no_kod`. It is unique in the MASTER sheet.
 
 `kategori` (Ubat or Bukan Ubat), `kod_phis`, `no_kod`, `perihal` (Perihal Stok), `brand`, `jenis` (APPL, LP or CC), `kumpulan`, `pku`, `sku`, `harga_pku`, `yearly`, `monthly`, `min`, `max`, `buffer`.
 
-Optional `info` (drug information from the old "DRUG FORMULARY" Google Sheet, columns C to X; every key optional, empty cells omitted, line breaks kept): `brand`, `form`, `pack_img`, `img`, `pharm_cat`, `prescriber_cat`, `pregnancy`, `breastfeeding`, `indications`, `dosage`, `renal`, `dilution`, `origin`, `phis`, `item_code`, `procurement`, `packaging`, `sku`, `price_pack` (number), `price_unit` (number), `group`, `keep_buffer` (boolean). Merged by `scripts/merge-druginfo.js` (or the seed, when `drug-formulary.csv` sits in the data folder). A sheet row matches a drug by Item Code = `no_kod`, then by Item Code or PhIS code against `no_kod`/`kod_phis`, then by exact normalised name. Rows that hit more than one drug, or that compete for one drug at the same tier, are reported as ambiguous and not applied. A MASTER re-import keeps `info`. Screens show the MASTER value first and the sheet value when MASTER is empty. The sheet has no Administration or Hepatic Dosage column.
+Optional `info` comes from the Notion formulary (Formulary Hospital Limbang), not the old Google Sheet. Every key is optional, empty cells are omitted, and line breaks are kept: `brand`, `form`, `pack_img`, `img`, `pharm_cat`, `prescriber_cat`, `pregnancy`, `breastfeeding`, `indications`, `dosage`, `administration`, `dilution`, `renal`, `hepatic`, `remark`, `phis`, `item_code`, `procurement`, `packaging`, `sku`, `price_pack` (number), `price_unit` (number), `group`, `quota_url` (https link only), `kept`. Notion has no separate contraindication field; pregnancy and breastfeeding are the fields it does have. A remark or other text that contains an identity-card number is left out and is not stored. `kept` is the approved floor-stock list, not a live balance: `{ loc, loc_id?, kind, qty?, note? }` where `kind` is `floor`, `aoh`, `trolley`, `dda` or `other`. `loc_id` is set only when the Notion ward name maps to a location in this app, and that row links to Kad Stok. Merged by `scripts/merge-notion.js`. A Notion row matches a drug by Item Code = `no_kod`, then by Item Code or PhIS code against `no_kod`/`kod_phis`, then by exact normalised name. Rows that hit more than one drug, or that compete for one drug at the same tier, are reported as ambiguous and not applied. A MASTER re-import keeps `info`. Screens show the MASTER value first and the Notion value when MASTER is empty. Hosted photos stay: a merge keeps `pack_img` and `img` already stored on the drug.
 
-Drugs added from the sheet alone (code-bearing rows with no similar drug name) carry `source: 'old-formulary-sheet'` and show an "Old formulary only" pill.
+A sheet row that matches no MASTER drug is not added. A drug already stored with `source: 'old-formulary-sheet'` (the old sheet alone, for example ranitidine) is dropped on the next merge and is hidden in the app.
+
+A Drive or imgur picture is also stored as a compressed WebP on Firebase Hosting: `/drugs/<encodeURIComponent(no_kod)>-pack.webp` and `-img.webp`. `public/shared/drug-photos.local.js` lists which of those files exist. That file and the pictures stay on the hospital's machine and are not part of the shared repository. The screen uses the hosted file, so the picture works offline. An old AppSheet path has no file to copy and stays a grey icon. `scripts/host-drug-photos.js` downloads and compresses the copies.
 
 Derived: `is_ubat_mahal` is true when a `mahal_item` row exists. `quota` comes from that row.
 

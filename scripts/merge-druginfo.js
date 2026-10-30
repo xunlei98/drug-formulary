@@ -15,45 +15,48 @@ const rows = parseInfoSheet(fs.readFileSync(csv, 'utf8'));
 const old = await db.collection('formulary').get();
 const drugs = new Map(old.docs.flatMap((d) => d.data().items).map((d) => [d.no_kod, d]));
 const m = matchInfo(rows, drugs);
-const { drugs: merged, added } = mergeInfo(drugs, m, rows);
-console.log(`Sheet rows ${rows.length}: matched ${m.matched.size} (${Object.entries(m.tiers).map(([k, v]) => `${k} ${v}`).join(', ')}), ambiguous ${m.ambiguous.length}, unmatched ${m.unmatched.length}, added as new drugs ${added.length}. Drugs with no sheet row: ${m.noSheet.length}.`);
+const { drugs: merged, removed } = mergeInfo(drugs, m);
+console.log(`Sheet rows ${rows.length}: matched ${m.matched.size} (${Object.entries(m.tiers).map(([k, v]) => `${k} ${v}`).join(', ')}), ambiguous ${m.ambiguous.length}, unmatched ${m.unmatched.length} (not added). Removed ${removed.length} old-sheet-only drugs. Drugs with no sheet row: ${m.noSheet.length}.`);
 
 const report = arg('report');
-if (report) fs.writeFileSync(report, reportMd(m, added, drugs));
+if (report) fs.writeFileSync(report, reportMd(m, removed, drugs));
 
 // Firestore hands map keys back in its own order, so compare with sorted keys.
 const stable = (v) => JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x));
 const before = new Map(old.docs.map((d) => [d.id, stable(d.data().items)]));
 const chunks = chunkDrugs(merged).map((items, i) => [`c${String(i).padStart(3, '0')}`, items]);
 const changed = chunks.filter(([cid, items]) => before.get(cid) !== stable(items));
+const keep = new Set(chunks.map(([cid]) => cid));
+const gone = old.docs.filter((d) => !keep.has(d.id));
 const size = Math.max(...chunks.map(([, items]) => JSON.stringify(items).length));
-console.log(`${changed.length} of ${chunks.length} chunks changed; largest chunk ${Math.round(size / 1024)} KB.`);
+console.log(`${changed.length} of ${chunks.length} chunks changed; ${gone.length} leftover chunks to delete; largest chunk ${Math.round(size / 1024)} KB.`);
 if (size > 900_000) { console.error('A chunk is near the 1 MiB document limit. Lower the chunk size first.'); process.exit(1); }
-if (flag('dry-run') || !changed.length) process.exit(0);
+if (flag('dry-run') || (!changed.length && !gone.length)) process.exit(0);
 
 const b = db.batch();
 for (const [cid, items] of changed) b.set(db.doc(`formulary/${cid}`), { items });
+for (const d of gone) b.delete(d.ref);
 b.set(db.doc('meta/catalog'), { formulary: FieldValue.increment(1) }, { merge: true });
 await b.commit();
-console.log(`Wrote ${changed.length} chunks and bumped meta/catalog.formulary.`);
+console.log(`Wrote ${changed.length} chunks, deleted ${gone.length}, and bumped meta/catalog.formulary.`);
 
-function reportMd(m, added, drugs) {
+function reportMd(m, removed, drugs) {
   const name = (k) => drugs.get(k)?.perihal || k;
   const line = (r) => `| ${r.line} | ${r.item.replace(/\|/g, '/')} | ${r.item_code || '-'} |`;
   const ubatNoSheet = m.noSheet.filter((k) => drugs.get(k).kategori === 'Ubat');
   return [
     '# Drug info merge report', '',
     `Sheet rows: ${rows.length}. Matched: ${m.matched.size} (item code ${m.tiers.item_code}, PhIS code ${m.tiers.phis}, exact name ${m.tiers.name}).`,
-    `Ambiguous (not applied): ${m.ambiguous.length}. Unmatched: ${m.unmatched.length}, of which ${added.length} added as new drugs.`,
+    `Ambiguous (not applied): ${m.ambiguous.length}. Unmatched (not added): ${m.unmatched.length}. Removed old-sheet-only drugs: ${removed.length}.`,
     `Formulary drugs with no sheet row: ${m.noSheet.length} (${ubatNoSheet.length} Ubat, the rest Bukan Ubat).`, '',
     '## Ambiguous: a person must decide', '', '| Sheet row | Item | Item code | Why | App drug |', '| --- | --- | --- | --- | --- |',
     ...m.ambiguous.map((a) => `${line(a)} ${a.reason} | ${a.drugs.map((k) => `${k} ${name(k)}`).join('; ')} |`), '',
     '## Unmatched with a similar formulary name: not applied, not added', '', '| Sheet row | Item | Item code | Closest drug |', '| --- | --- | --- | --- |',
     ...m.unmatched.filter((u) => u.suggest).map((u) => `${line(u)} ${u.suggest.drug} ${name(u.suggest.drug)} (${u.suggest.match} ${u.suggest.score}) |`), '',
-    '## Unmatched, added as new drugs (marked "Old formulary only")', '', '| Sheet row | Item | Item code |', '| --- | --- | --- |',
-    ...m.unmatched.filter((u) => !u.suggest && added.includes(u.item_code)).map((u) => line(u)), '',
-    '## Unmatched with no item code: not added', '', '| Sheet row | Item | Item code |', '| --- | --- | --- |',
-    ...m.unmatched.filter((u) => !u.suggest && !added.includes(u.item_code)).map((u) => line(u)), '',
+    '## Unmatched: not added', '', '| Sheet row | Item | Item code |', '| --- | --- | --- |',
+    ...m.unmatched.filter((u) => !u.suggest).map((u) => line(u)), '',
+    '## Removed: were only on the old sheet', '',
+    ...removed.map((k) => `- ${k} ${name(k)}`), '',
     '## Ubat in the formulary with no sheet row', '', ...ubatNoSheet.map((k) => `- ${k} ${name(k)}`), '',
   ].join('\n');
 }

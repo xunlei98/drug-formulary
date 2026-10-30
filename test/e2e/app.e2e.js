@@ -44,7 +44,7 @@ before(async () => {
   auth = getAuth(app);
 
   const info = parseInfoSheet(INFO);
-  const { drugs } = mergeInfo(importMaster(MASTER).drugs, matchInfo(info, importMaster(MASTER).drugs), info);
+  const { drugs } = mergeInfo(importMaster(MASTER).drugs, matchInfo(info, importMaster(MASTER).drugs));
   const { mahal } = importItemMahal('ID,No Kod,Kuota,Tarikh Kemaskini,Nota\nr1,D1,6,04/08/2022', { drugs });
   const b = db.batch();
   chunkDrugs(drugs).forEach((items, i) => b.set(db.doc(`formulary/c00${i}`), { items }));

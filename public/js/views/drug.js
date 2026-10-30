@@ -4,6 +4,8 @@ import { stat, statusPill, quotaBar, tape, locName, moveLine, toast } from '../u
 import { inverseOf } from '/shared/ledger.js';
 import { parPill, parMeta } from './stock.js';
 import { drugHeader } from '../drugui.js';
+import { drugView } from '/shared/druginfo.js';
+import { LIST_LABEL } from '/shared/par.js';
 
 export function drug({ id }) {
   const kod = decodeURIComponent(id);
@@ -61,7 +63,7 @@ export function drug({ id }) {
           canUndo && h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Undo this movement', onClick: () => undo(m) }, icon('undo')));
       }) : h('li', { class: 'empty' }, 'No movements yet.')));
 
-    clear(body, featured, unitCard, stockCard, moveCard, q && can_('quota.edit') ? quotaEditor(kod, q) : null);
+    clear(body, featured, unitCard, keptCard(kod), stockCard, moveCard, q && can_('quota.edit') ? quotaEditor(kod, q) : null);
   };
 
   async function undo(m) {
@@ -73,6 +75,29 @@ export function drug({ id }) {
 
   paint();
   return { el: h('div', null, h('a', { class: 'btn ghost', href: '#/' }, icon('back'), 'Search'), h('div', { class: 'section' }), drugHeader(d), body), title: d.no_kod, update: paint };
+}
+
+const KEPT_ORDER = ['floor', 'aoh', 'trolley', 'dda', 'other'];
+
+function keptCard(kod) {
+  const kept = drugView(state.drugMap.get(kod)).kept;
+  const groups = KEPT_ORDER.map((kind) => ({ kind, rows: kept.filter((r) => r.kind === kind) })).filter((g) => g.rows.length);
+  const line = (r) => {
+    const href = r.loc_id ? `#/kad/${encodeURIComponent(kod)}?loc=${encodeURIComponent(r.loc_id)}` : null;
+    const body = [
+      h('div', { class: 'grow' }, h('div', { class: 'name' }, r.loc), r.note ? h('div', { class: 'meta' }, r.note) : null),
+      r.qty ? h('span', { class: 'qty mono' }, r.qty) : null,
+      href ? icon('chevron') : null,
+    ];
+    return h('li', null, href
+      ? h('a', { class: 'item', href, 'aria-label': `Kad Stok ${r.loc}` }, body)
+      : h('div', { class: 'item' }, body));
+  };
+  return h('section', { class: 'card' },
+    h('p', { class: 'label card-pad' }, 'Where this drug is kept'),
+    groups.length
+      ? groups.flatMap((g) => [h('p', { class: 'label kept-kind' }, LIST_LABEL[g.kind] || 'Other'), h('ul', { class: 'list' }, g.rows.map(line))])
+      : h('p', { class: 'sub kept-empty' }, 'Not listed on floor stock, after office hours, or an emergency trolley.'));
 }
 
 function quotaEditor(kod, q) {

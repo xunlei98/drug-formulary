@@ -2,6 +2,15 @@
 // Pure: parse, match and merge return data; the merge script and the seed write it.
 import { parseRecords, num } from './csv.js';
 import { norm, buildIndex, matchRow } from './floorstock.js';
+import { DRUG_PHOTOS as EMPTY_PHOTOS } from './drug-photos.js';
+
+// A hospital's own photo index, when scripts/host-drug-photos.js has written one. Absent in a fresh copy.
+export let DRUG_PHOTOS = EMPTY_PHOTOS;
+try {
+  DRUG_PHOTOS = (await import('./drug-photos.local.js')).DRUG_PHOTOS ?? EMPTY_PHOTOS;
+} catch {
+  // This copy has no hosted pictures yet.
+}
 
 // Sheet column -> key in drug.info. Every key is optional.
 export const INFO_COLUMNS = [
@@ -81,36 +90,23 @@ export function matchInfo(rows, drugs) {
 
 const brief = (r) => ({ line: r.line, item: r.item, item_code: r.info.item_code || '', phis: r.info.phis || '' });
 
-const JENIS = { APPL: 'APPL', 'LOCAL PURCHASE': 'LP', LP: 'LP', CONTRACT: 'CC', CC: 'CC' };
+export const OLD_FORMULARY_SOURCE = 'old-formulary-sheet';
 
-// A sheet row nobody matched becomes a new drug when it has a usable item code
-// and no formulary name looks like it (those may be the same item under another code, so a person decides).
-export function newDrugFrom(row) {
-  const kod = row.info.item_code;
-  if (!kod || kod.includes('/')) return null;
-  const i = row.info;
-  const d = { no_kod: kod, kategori: 'Ubat', kod_phis: i.phis || '', perihal: row.item, brand: i.brand || '', jenis: JENIS[code(i.procurement)] || '',
-    kumpulan: i.group || '', pku: i.packaging || '', sku: i.sku || '', harga_pku: i.price_pack ?? null,
-    yearly: null, monthly: null, min: null, max: null, buffer: null, source: 'old-formulary-sheet' };
-  return d;
+// True for a drug that was created from the old sheet because it was not on the MASTER list.
+export function isOldFormularyOnly(d) {
+  return d?.source === OLD_FORMULARY_SOURCE;
 }
 
-// Returns a new Map with info set on matched drugs and new drugs added. Drugs with no sheet row keep their info.
-export function mergeInfo(drugs, { matched, unmatched }, rows, { addNew = true } = {}) {
-  const out = new Map(drugs);
-  for (const [kod, c] of matched) out.set(kod, { ...out.get(kod), info: c.row.info });
-  const added = [];
-  if (addNew) {
-    const byLine = new Map(rows.map((r) => [r.line, r]));
-    for (const u of unmatched) {
-      if (u.suggest) continue;
-      const d = newDrugFrom(byLine.get(u.line));
-      if (!d || out.has(d.no_kod)) continue;
-      out.set(d.no_kod, { ...d, info: byLine.get(u.line).info });
-      added.push(d.no_kod);
-    }
+// Sets info on matched MASTER drugs. A sheet row that matches no MASTER drug is not added.
+// A drug already stored from the old sheet alone is removed.
+export function mergeInfo(drugs, { matched }) {
+  const out = new Map();
+  const removed = [];
+  for (const [kod, d] of drugs) {
+    if (isOldFormularyOnly(d)) { removed.push(kod); continue; }
+    out.set(kod, matched.has(kod) ? { ...d, info: matched.get(kod).row.info } : d);
   }
-  return { drugs: out, added };
+  return { drugs: out, added: [], removed };
 }
 
 // Picture URL the app may load: Drive links become the small lh3 thumbnail; anything not https (old AppSheet paths) is dropped.
@@ -120,6 +116,34 @@ export function imageUrl(u, width = 400) {
   const drive = /^https:\/\/drive\.google\.com\//i.test(s) && (/[?&]id=([\w-]+)/.exec(s) || /\/d\/([\w-]+)/.exec(s));
   if (drive) return `https://lh3.googleusercontent.com/d/${drive[1]}=w${width}`;
   return /^https:\/\/i\.imgur\.com\//i.test(s) ? s : null;
+}
+
+// Compressed copy on Firebase Hosting: /drugs/<code>-pack.webp or -img.webp.
+export function photoFile(no_kod, kind) {
+  return `${encodeURIComponent(no_kod)}-${kind}.webp`;
+}
+export function hostedPhoto(no_kod, kind, photos) {
+  if (!photos?.[no_kod]?.[kind]) return null;
+  return `/drugs/${photoFile(no_kod, kind)}`;
+}
+export function pictureUrl(no_kod, raw, kind, photos = DRUG_PHOTOS) {
+  return hostedPhoto(no_kod, kind, photos) || imageUrl(raw);
+}
+
+// One download per hostable picture. Old-sheet-only drugs and AppSheet paths are skipped.
+export function photoJobs(drugs) {
+  const jobs = [];
+  for (const d of drugs) {
+    if (isOldFormularyOnly(d) || !d.no_kod) continue;
+    const i = d.info || {};
+    for (const kind of ['pack', 'img']) {
+      const raw = i[kind === 'pack' ? 'pack_img' : 'img'];
+      const src = imageUrl(raw, 800);
+      if (!src) continue;
+      jobs.push({ no_kod: d.no_kod, kind, src, file: photoFile(d.no_kod, kind) });
+    }
+  }
+  return jobs;
 }
 
 // Pill colour (an existing status class) for a prescriber category and a procurement route.
@@ -133,17 +157,20 @@ export function procurementTone(p) {
 }
 const JENIS_LABEL = { LP: 'Local Purchase', CC: 'Contract', APPL: 'APPL' };
 
-// The values a person reads for one drug: the MASTER (store) value first, the old sheet's value when MASTER has none.
+// The values a person reads for one drug: the MASTER (store) value first, Notion when MASTER has none.
 export function drugView(d) {
   const i = d.info || {};
   const pick = (a, b) => (a != null && a !== '' ? a : b ?? null);
   return {
     brand: pick(d.brand, i.brand), form: i.form ?? null, pharm_cat: i.pharm_cat ?? null, prescriber_cat: i.prescriber_cat ?? null,
-    indications: i.indications ?? null, dosage: i.dosage ?? null, dilution: i.dilution ?? null, renal: i.renal ?? null,
-    pregnancy: i.pregnancy ?? null, breastfeeding: i.breastfeeding ?? null,
+    indications: i.indications ?? null, dosage: i.dosage ?? null, administration: i.administration ?? null,
+    dilution: i.dilution ?? null, renal: i.renal ?? null, hepatic: i.hepatic ?? null,
+    pregnancy: i.pregnancy ?? null, breastfeeding: i.breastfeeding ?? null, remark: i.remark ?? null,
     phis: pick(d.kod_phis, i.phis), item_code: pick(i.item_code, d.no_kod), procurement: pick(i.procurement, JENIS_LABEL[d.jenis] || d.jenis),
     packaging: pick(d.pku, i.packaging), sku: pick(d.sku, i.sku), price_pack: pick(d.harga_pku, i.price_pack), price_unit: i.price_unit ?? null,
     group: pick(i.group, d.kumpulan), keep_buffer: i.keep_buffer ?? null, origin: i.origin ?? null,
-    pack_img: imageUrl(i.pack_img), img: imageUrl(i.img), old_sheet_only: d.source === 'old-formulary-sheet',
+    quota_url: /^https:\/\//i.test(i.quota_url || '') ? i.quota_url : null,
+    kept: Array.isArray(i.kept) ? i.kept : [],
+    pack_img: pictureUrl(d.no_kod, i.pack_img, 'pack'), img: pictureUrl(d.no_kod, i.img, 'img'),
   };
 }
