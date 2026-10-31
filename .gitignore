@@ -15,4 +15,6 @@ firestore-debug.log
 ui-debug.log
 *service-account*.json
 *-firebase-adminsdk-*.json
+# This hospital's Firebase web config. Copy firebase-config.example.js and fill it in.
+public/js/firebase-config.js
 .firebase/

@@ -8,7 +8,7 @@ The live Limbang site is [https://limbang-formulary.web.app](https://limbang-for
 
 1. Copy this repository.
 2. Create your own Firebase project on the free Spark plan. Do not point it at `limbang-formulary`.
-3. Put your project's web config in `public/js/firebase-config.js`, then `npx firebase use --add`. The steps are in [docs/deploy.md](docs/deploy.md).
+3. Copy `public/js/firebase-config.example.js` to `public/js/firebase-config.js` and put in your own project's web config, then `npx firebase use --add`. That config file stays on your machine. The steps are in [docs/deploy.md](docs/deploy.md).
 4. Load your own formulary, locations, and par levels with the seed scripts. Patients stay as fake DEMO rows until your hospital has approval to host real names and identity-card numbers.
 
 What you get is the staff app: drug search, the drug page, the Kad Stok tally card, Ubat Mahal quotas, and the stock log. You also get the Firestore security rules and the scripts that build and load data. There is no server to run. `firestore.rules` is the permission check.

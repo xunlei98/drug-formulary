@@ -64,7 +64,7 @@ Default `false`. With it false, the seed and the in-app importer accept only `DE
 ## Moving to the MOH work account
 
 1. Create the project there (Spark), enable Email/Password Auth and Firestore in asia-southeast1, add a Web app.
-2. Put its web config in `public/js/firebase-config.js`.
+2. Copy `public/js/firebase-config.example.js` to `public/js/firebase-config.js` and put in that project's web config. The filled-in file is gitignored. Do not commit it.
 3. `npx firebase use --add` (alias e.g. `moh`), or set `FIREBASE_PROJECT=<id>` for `npm run deploy`. The scripts take `--project <id>` or `FIREBASE_PROJECT`.
 4. New service account key from the new project, then deploy, seed and create the first admin as above.
 

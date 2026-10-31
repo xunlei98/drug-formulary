@@ -13,7 +13,7 @@ Firestore Security Rules (`firestore.rules`) are the only gate; the client hides
 - Movements, reversals, patient log and audit entries are create-only. A reversal is allowed once per movement and must be the exact inverse.
 - Only admins write users, roles, locations, the formulary and par levels. Pharmacists may edit quotas in `catalog/mahal`, patients, stats and checkpoints.
 - A user can change only their own `must_change` (to false) and `last_login` (to server time).
-- The web API key in `firebase-config.js` is public by design; access is controlled by Auth and the rules.
+- The web API key identifies the Firebase project in the browser. It is not in this repository: `public/js/firebase-config.js` is gitignored, and the key only works from this hospital's site. Data access is still enforced by Auth and the rules.
 
 ## Patient data on devices
 
